@@ -25,7 +25,7 @@ define('SESSION_LIFETIME', 28800); // 8 horas
 define('CSRF_TOKEN_NAME', '_token');
 
 // API
-define('API_SECRET', $_ENV['API_SECRET'] ?? 'pdvpro_api_2026_secret_key_change_this');
+define('API_SECRET', $_ENV['API_SECRET'] ?? '');
 
 // Licenca - defaults
 define('TRIAL_DAYS', 15);
