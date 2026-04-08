@@ -418,10 +418,23 @@ function handleChecarAtualizacao(PDO $pdo): void {
 
 function handlePlanos(PDO $pdo): void {
     $tipo = $_GET['tipo'] ?? 'desktop';
+    $incluirFree = ($_GET['incluir_free'] ?? '0') === '1';
 
+    // Planos pagos ativos
     $stmt = $pdo->prepare("SELECT id, nome, slug, tipo_produto, periodo, preco, limite_nfce, limite_terminais, recursos FROM planos WHERE tipo_produto = ? AND ativo = 1 AND preco > 0 ORDER BY preco ASC");
     $stmt->execute([$tipo]);
     $planos = $stmt->fetchAll();
+
+    // Se solicitado, incluir plano Free (busca pelo slug, independente de ativo)
+    $planoFree = null;
+    if ($incluirFree) {
+        $stmtFree = $pdo->prepare("SELECT id, nome, slug, tipo_produto, periodo, preco, limite_nfce, limite_terminais, recursos FROM planos WHERE slug = ? LIMIT 1");
+        $stmtFree->execute([$tipo . '-free']);
+        $planoFree = $stmtFree->fetch();
+        if ($planoFree) {
+            array_unshift($planos, $planoFree);
+        }
+    }
 
     foreach ($planos as &$p) {
         $p['recursos'] = json_decode($p['recursos'], true) ?: [];
