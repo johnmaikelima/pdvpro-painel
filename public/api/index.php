@@ -33,7 +33,9 @@ rateLimitCheck($pdo, $action);
 
 match($action) {
     'registrar' => handleRegistrar($pdo),
+    'registrar_saas' => handleRegistrarSaas($pdo),
     'validar' => handleValidar($pdo),
+    'validar_saas' => handleValidarSaas($pdo),
     'ativar' => handleAtivar($pdo),
     'reportar_nfce' => handleReportarNfce($pdo),
     'checar_atualizacao' => handleChecarAtualizacao($pdo),
@@ -968,4 +970,260 @@ HTML;
             'erro' => $e->getMessage(),
         ]);
     }
+}
+
+// ============================================
+//   Handlers SaaS
+// ============================================
+
+function handleRegistrarSaas(PDO $pdo): void {
+    $input = getInput();
+
+    // Autenticar via API_SECRET (chamado pelo sistema SaaS, nao pelo usuario)
+    $secret = $input['api_secret'] ?? ($_SERVER['HTTP_X_API_SECRET'] ?? '');
+    if (empty($secret) || !hash_equals(API_SECRET, $secret)) {
+        jsonResponse(403, ['ok' => false, 'mensagem' => 'Acesso nao autorizado.']);
+    }
+
+    $razaoSocial = trim($input['razao_social'] ?? '');
+    $nomeFantasia = trim($input['nome_fantasia'] ?? '') ?: null;
+    $cnpj = trim($input['cnpj'] ?? '') ?: null;
+    $cpf = trim($input['cpf'] ?? '') ?: null;
+    $email = trim($input['email'] ?? '') ?: null;
+    $telefone = trim($input['telefone'] ?? '') ?: null;
+    $whatsapp = trim($input['whatsapp'] ?? '') ?: null;
+    $contatoNome = trim($input['contato_nome'] ?? '') ?: null;
+    $cidade = trim($input['cidade'] ?? '') ?: null;
+    $uf = trim($input['uf'] ?? '') ?: null;
+    $planoSlug = trim($input['plano_slug'] ?? 'saas-free');
+
+    // Validacoes
+    if (empty($razaoSocial)) {
+        jsonResponse(400, ['ok' => false, 'mensagem' => 'Razao Social e obrigatoria.']);
+    }
+    if (empty($cnpj) && empty($cpf)) {
+        jsonResponse(400, ['ok' => false, 'mensagem' => 'CNPJ ou CPF e obrigatorio.']);
+    }
+    if (empty($email)) {
+        jsonResponse(400, ['ok' => false, 'mensagem' => 'Email e obrigatorio.']);
+    }
+
+    // Verificar se CNPJ/CPF ja existe
+    if ($cnpj) {
+        $stmt = $pdo->prepare("SELECT id FROM clientes WHERE cnpj = ?");
+        $stmt->execute([$cnpj]);
+        if ($stmt->fetch()) {
+            jsonResponse(409, ['ok' => false, 'mensagem' => 'CNPJ ja cadastrado no sistema.']);
+        }
+    }
+
+    // Buscar plano SaaS
+    $stmt = $pdo->prepare("SELECT * FROM planos WHERE slug = ? AND tipo_produto = 'saas' AND ativo = 1 LIMIT 1");
+    $stmt->execute([$planoSlug]);
+    $plano = $stmt->fetch();
+
+    if (!$plano) {
+        // Fallback: buscar qualquer plano saas free/trial
+        $stmt = $pdo->prepare("SELECT * FROM planos WHERE tipo_produto = 'saas' AND preco = 0 AND ativo = 1 LIMIT 1");
+        $stmt->execute();
+        $plano = $stmt->fetch();
+    }
+
+    $planoId = $plano ? (int)$plano['id'] : null;
+
+    // Calcular data de vencimento do trial
+    $trialDias = 15; // padrao
+    if ($plano && !empty($plano['recursos'])) {
+        $recursos = json_decode($plano['recursos'], true);
+        if (isset($recursos['trial_dias'])) {
+            $trialDias = (int)$recursos['trial_dias'];
+        }
+    }
+    $dataVencimento = date('Y-m-d H:i:s', strtotime("+{$trialDias} days"));
+
+    // Se plano pago, vencimento sera controlado pelo pagamento
+    if ($plano && (float)$plano['preco'] > 0) {
+        $dataVencimento = date('Y-m-d H:i:s', strtotime('+3 days')); // 3 dias para pagar
+    }
+
+    // Gerar API token e chave de licenca
+    $apiToken = bin2hex(random_bytes(32));
+    $chave = 'S' . strtoupper(bin2hex(random_bytes(7))); // S = SaaS
+    $chave = substr($chave, 0, 4) . '-' . substr($chave, 4, 4) . '-' . substr($chave, 8, 4) . '-' . substr($chave, 12, 4);
+
+    // Garantir chave unica
+    $check = $pdo->prepare("SELECT COUNT(*) FROM licencas WHERE chave = ?");
+    $check->execute([$chave]);
+    while ($check->fetchColumn() > 0) {
+        $chave = 'S' . strtoupper(bin2hex(random_bytes(7)));
+        $chave = substr($chave, 0, 4) . '-' . substr($chave, 4, 4) . '-' . substr($chave, 8, 4) . '-' . substr($chave, 12, 4);
+        $check->execute([$chave]);
+    }
+
+    try {
+        $pdo->beginTransaction();
+
+        // Criar cliente
+        $stmt = $pdo->prepare("INSERT INTO clientes (razao_social, nome_fantasia, cnpj, cpf, email, telefone, whatsapp, contato_nome, cidade, uf, plano_id, status, api_token) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
+        $status = ($plano && (float)$plano['preco'] == 0) ? 'trial' : 'ativo';
+        $stmt->execute([$razaoSocial, $nomeFantasia, $cnpj, $cpf, $email, $telefone, $whatsapp, $contatoNome, $cidade, $uf, $planoId, $status, $apiToken]);
+        $clienteId = (int)$pdo->lastInsertId();
+
+        // Criar licenca SaaS
+        $stmt = $pdo->prepare("INSERT INTO licencas (chave, cliente_id, plano_id, tipo, status, data_ativacao, data_vencimento, ultimo_check, ip_ativacao, observacoes) VALUES (?,?,?,?,?,NOW(),?,NOW(),?,?)");
+        $stmt->execute([
+            $chave,
+            $clienteId,
+            $planoId,
+            $plano ? $plano['periodo'] : 'mensal',
+            'ativa',
+            $dataVencimento,
+            $_SERVER['REMOTE_ADDR'] ?? '',
+            'Registro SaaS - ' . ($plano ? $plano['nome'] : 'Sem plano')
+        ]);
+        $licencaId = (int)$pdo->lastInsertId();
+
+        $pdo->commit();
+
+        logApi($pdo, $licencaId, $clienteId, 'registrar_saas', [
+            'cnpj' => $cnpj,
+            'email' => $email,
+            'chave' => $chave,
+            'plano' => $planoSlug,
+        ]);
+
+        $response = [
+            'ok' => true,
+            'mensagem' => 'Cliente SaaS registrado com sucesso.',
+            'chave' => $chave,
+            'cliente_id' => $clienteId,
+            'licenca_id' => $licencaId,
+            'api_token' => $apiToken,
+            'plano' => $plano ? $plano['nome'] : null,
+            'plano_slug' => $plano ? $plano['slug'] : null,
+            'trial_dias' => ($plano && (float)$plano['preco'] == 0) ? $trialDias : null,
+            'data_vencimento' => $dataVencimento,
+        ];
+
+        // Se plano pago, criar cobranca no Asaas
+        if ($plano && (float)$plano['preco'] > 0) {
+            try {
+                require_once APP_PATH . '/includes/asaas.php';
+                $asaas = new Asaas($pdo);
+                $cpfCnpj = $cnpj ?: $cpf;
+                $customer = $asaas->getOrCreateCustomer([
+                    'razao_social' => $razaoSocial,
+                    'nome_fantasia' => $nomeFantasia ?: $razaoSocial,
+                    'cnpj' => $cnpj,
+                    'cpf' => $cpf,
+                    'email' => $email,
+                    'telefone' => $telefone ?? $whatsapp ?? '',
+                ]);
+                $asaasCustomerId = $customer['id'];
+                $pdo->prepare("UPDATE clientes SET asaas_customer_id = ? WHERE id = ?")->execute([$asaasCustomerId, $clienteId]);
+
+                $subscription = $asaas->createSubscription([
+                    'customer' => $asaasCustomerId,
+                    'billingType' => 'UNDEFINED',
+                    'value' => (float)$plano['preco'],
+                    'cycle' => strtoupper($plano['periodo'] === 'mensal' ? 'MONTHLY' : ($plano['periodo'] === 'trimestral' ? 'QUARTERLY' : 'YEARLY')),
+                    'description' => 'PDV Pro SaaS - ' . $plano['nome'],
+                    'externalReference' => "saas-{$clienteId}-{$licencaId}",
+                ]);
+
+                $paymentUrl = $subscription['paymentLink'] ?? ($subscription['invoiceUrl'] ?? null);
+                $response['payment_url'] = $paymentUrl;
+                $response['asaas_subscription_id'] = $subscription['id'] ?? null;
+
+            } catch (\Throwable $e) {
+                $response['payment_error'] = 'Cobranca sera gerada em breve. Entre em contato se necessario.';
+                logApi($pdo, $licencaId, $clienteId, 'registrar_saas_asaas_erro', ['erro' => $e->getMessage()]);
+            }
+        }
+
+        jsonResponse(201, $response);
+    } catch (\PDOException $e) {
+        $pdo->rollBack();
+        jsonResponse(500, ['ok' => false, 'mensagem' => 'Erro ao cadastrar. Tente novamente.']);
+    }
+}
+
+function handleValidarSaas(PDO $pdo): void {
+    $input = getInput();
+
+    $secret = $input['api_secret'] ?? ($_SERVER['HTTP_X_API_SECRET'] ?? '');
+    if (empty($secret) || !hash_equals(API_SECRET, $secret)) {
+        jsonResponse(403, ['ok' => false, 'mensagem' => 'Acesso nao autorizado.']);
+    }
+
+    $chave = strtoupper(trim($input['chave'] ?? ''));
+    if (empty($chave)) {
+        jsonResponse(400, ['ok' => false, 'mensagem' => 'Chave obrigatoria.']);
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT l.*, p.nome as plano_nome, p.slug as plano_slug, p.preco as plano_preco,
+               p.limite_nfce, p.limite_terminais, p.recursos as plano_recursos,
+               c.status as cliente_status, c.razao_social, c.email
+        FROM licencas l
+        LEFT JOIN planos p ON l.plano_id = p.id
+        LEFT JOIN clientes c ON l.cliente_id = c.id
+        WHERE l.chave = ?
+    ");
+    $stmt->execute([$chave]);
+    $licenca = $stmt->fetch();
+
+    if (!$licenca) {
+        jsonResponse(404, ['ok' => false, 'status' => 'invalida', 'mensagem' => 'Licenca nao encontrada.']);
+    }
+
+    // Atualizar ultimo check
+    $pdo->prepare("UPDATE licencas SET ultimo_check = NOW() WHERE id = ?")->execute([$licenca['id']]);
+
+    // Verificar vencimento
+    $vencida = false;
+    if ($licenca['data_vencimento'] && strtotime($licenca['data_vencimento']) < time()) {
+        $vencida = true;
+    }
+
+    // Verificar status
+    $ativa = in_array($licenca['status'], ['ativa', 'disponivel']) && !$vencida;
+    $bloqueada = in_array($licenca['status'], ['revogada', 'bloqueada']);
+    $clienteInativo = in_array($licenca['cliente_status'], ['inativo', 'inadimplente']);
+
+    if ($bloqueada) {
+        jsonResponse(200, ['ok' => false, 'status' => 'bloqueada', 'mensagem' => 'Licenca bloqueada. Entre em contato com o suporte.']);
+    }
+
+    if ($clienteInativo) {
+        jsonResponse(200, ['ok' => false, 'status' => 'inadimplente', 'mensagem' => 'Conta inadimplente. Regularize seu pagamento.']);
+    }
+
+    if ($vencida) {
+        jsonResponse(200, [
+            'ok' => false,
+            'status' => 'expirada',
+            'mensagem' => 'Periodo de teste expirado. Escolha um plano para continuar.',
+            'data_vencimento' => $licenca['data_vencimento'],
+        ]);
+    }
+
+    // Calcular dias restantes
+    $diasRestantes = null;
+    if ($licenca['data_vencimento']) {
+        $diasRestantes = max(0, (int)ceil((strtotime($licenca['data_vencimento']) - time()) / 86400));
+    }
+
+    jsonResponse(200, [
+        'ok' => true,
+        'status' => 'ativa',
+        'plano' => $licenca['plano_nome'],
+        'plano_slug' => $licenca['plano_slug'],
+        'plano_preco' => (float)($licenca['plano_preco'] ?? 0),
+        'limite_nfce' => (int)($licenca['limite_nfce'] ?? 0),
+        'limite_terminais' => (int)($licenca['limite_terminais'] ?? 0),
+        'data_vencimento' => $licenca['data_vencimento'],
+        'dias_restantes' => $diasRestantes,
+        'cliente' => $licenca['razao_social'],
+    ]);
 }

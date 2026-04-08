@@ -4,24 +4,50 @@ requireLogin();
 
 $pageTitle = 'Planos';
 
-// Salvar edicao
+// Salvar edicao ou criar novo
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verifyCsrf()) {
-        flash('danger', 'Token CSRF invalido.');
+        flash('danger', 'Token CSRF inválido.');
         redirect('index.php');
     }
 
-    $id = (int)($_POST['id'] ?? 0);
+    $acao = $_POST['acao'] ?? 'editar';
     $nome = trim($_POST['nome'] ?? '');
     $preco = (float)str_replace(',', '.', $_POST['preco'] ?? '0');
     $limiteNfce = (int)($_POST['limite_nfce'] ?? 0);
     $limiteTerminais = (int)($_POST['limite_terminais'] ?? 1);
     $ativo = (int)($_POST['ativo'] ?? 0);
 
-    if ($id && !empty($nome)) {
-        $pdo->prepare("UPDATE planos SET nome = ?, preco = ?, limite_nfce = ?, limite_terminais = ?, ativo = ? WHERE id = ?")
-            ->execute([$nome, $preco, $limiteNfce, $limiteTerminais, $ativo, $id]);
-        flash('success', "Plano \"{$nome}\" atualizado!");
+    if ($acao === 'criar' && !empty($nome)) {
+        $slug = trim($_POST['slug'] ?? '');
+        $tipoProduto = $_POST['tipo_produto'] ?? 'desktop';
+        $periodo = $_POST['periodo'] ?? 'mensal';
+        $recursos = trim($_POST['recursos'] ?? '');
+
+        if (empty($slug)) {
+            $slug = strtolower(preg_replace('/[^a-zA-Z0-9-]/', '-', $nome));
+            $slug = preg_replace('/-+/', '-', trim($slug, '-'));
+        }
+
+        // Verificar slug duplicado
+        $existe = $pdo->prepare("SELECT id FROM planos WHERE slug = ?");
+        $existe->execute([$slug]);
+        if ($existe->fetch()) {
+            flash('danger', "Já existe um plano com o slug \"{$slug}\".");
+            redirect('index.php');
+        }
+
+        $pdo->prepare("INSERT INTO planos (nome, slug, tipo_produto, periodo, preco, limite_nfce, limite_terminais, recursos, ativo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+            ->execute([$nome, $slug, $tipoProduto, $periodo, $preco, $limiteNfce, $limiteTerminais, $recursos ?: null, $ativo]);
+        flash('success', "Plano \"{$nome}\" criado com sucesso!");
+
+    } elseif ($acao === 'editar') {
+        $id = (int)($_POST['id'] ?? 0);
+        if ($id && !empty($nome)) {
+            $pdo->prepare("UPDATE planos SET nome = ?, preco = ?, limite_nfce = ?, limite_terminais = ?, ativo = ? WHERE id = ?")
+                ->execute([$nome, $preco, $limiteNfce, $limiteTerminais, $ativo, $id]);
+            flash('success', "Plano \"{$nome}\" atualizado!");
+        }
     }
 
     redirect('index.php');
@@ -38,8 +64,11 @@ $planos = $pdo->query("
 include APP_PATH . '/includes/header.php';
 ?>
 
-<div class="page-header">
+<div class="page-header d-flex justify-content-between align-items-center">
     <h2><i class="fas fa-tags me-2"></i>Planos</h2>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#criarModal">
+        <i class="fas fa-plus me-1"></i>Novo Plano
+    </button>
 </div>
 
 <?php foreach (['desktop' => 'Desktop', 'saas' => 'SaaS'] as $tipo => $label): ?>
@@ -152,5 +181,88 @@ include APP_PATH . '/includes/header.php';
     </div>
 </div>
 <?php endforeach; ?>
+
+<!-- Modal Criar Plano -->
+<div class="modal fade" id="criarModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST">
+                <?= csrfField() ?>
+                <input type="hidden" name="acao" value="criar">
+
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-plus me-2"></i>Novo Plano</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Nome</label>
+                        <input type="text" name="nome" class="form-control" placeholder="Ex: SaaS Free Trial" required>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Slug</label>
+                            <input type="text" name="slug" class="form-control" placeholder="Ex: saas-free">
+                            <small class="text-muted">Deixe vazio para gerar automaticamente</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Tipo de Produto</label>
+                            <select name="tipo_produto" class="form-select">
+                                <option value="desktop">Desktop</option>
+                                <option value="saas">SaaS</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mt-1">
+                        <div class="col-md-6">
+                            <label class="form-label">Período</label>
+                            <select name="periodo" class="form-select">
+                                <option value="mensal">Mensal</option>
+                                <option value="trimestral">Trimestral</option>
+                                <option value="anual">Anual</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Preço (R$)</label>
+                            <input type="number" name="preco" class="form-control" value="0.00" step="0.01" min="0" required>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mt-1">
+                        <div class="col-md-6">
+                            <label class="form-label">Limite NFC-e/mês</label>
+                            <input type="number" name="limite_nfce" class="form-control" value="0" min="0">
+                            <small class="text-muted">0 = ilimitado</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Terminais</label>
+                            <input type="number" name="limite_terminais" class="form-control" value="1" min="0">
+                            <small class="text-muted">0 = ilimitado</small>
+                        </div>
+                    </div>
+
+                    <div class="mb-3 mt-3">
+                        <label class="form-label">Recursos (JSON)</label>
+                        <textarea name="recursos" class="form-control" rows="3" placeholder='{"trial_dias": 15}'></textarea>
+                        <small class="text-muted">Opcional. JSON com recursos extras do plano</small>
+                    </div>
+
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="ativo" value="1" id="ativoCriar" checked>
+                        <label class="form-check-label" for="ativoCriar">Plano ativo (visível para clientes)</label>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i>Criar Plano</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
 <?php include APP_PATH . '/includes/footer.php'; ?>
