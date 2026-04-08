@@ -28,6 +28,7 @@ $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
 
 match($action) {
+    'registrar' => handleRegistrar($pdo),
     'validar' => handleValidar($pdo),
     'ativar' => handleAtivar($pdo),
     'reportar_nfce' => handleReportarNfce($pdo),
@@ -39,6 +40,109 @@ match($action) {
 // ============================================
 //   Handlers
 // ============================================
+
+function handleRegistrar(PDO $pdo): void {
+    $input = getInput();
+
+    $razaoSocial = trim($input['razao_social'] ?? '');
+    $nomeFantasia = trim($input['nome_fantasia'] ?? '') ?: null;
+    $cnpj = trim($input['cnpj'] ?? '') ?: null;
+    $cpf = trim($input['cpf'] ?? '') ?: null;
+    $email = trim($input['email'] ?? '') ?: null;
+    $telefone = trim($input['telefone'] ?? '') ?: null;
+    $whatsapp = trim($input['whatsapp'] ?? '') ?: null;
+    $contatoNome = trim($input['contato_nome'] ?? '') ?: null;
+    $cidade = trim($input['cidade'] ?? '') ?: null;
+    $uf = trim($input['uf'] ?? '') ?: null;
+    $hardwareId = $input['hardware_id'] ?? '';
+
+    // Validacoes
+    if (empty($razaoSocial)) {
+        jsonResponse(400, ['ok' => false, 'mensagem' => 'Razao Social e obrigatoria.']);
+    }
+    if (empty($cnpj) && empty($cpf)) {
+        jsonResponse(400, ['ok' => false, 'mensagem' => 'CNPJ ou CPF e obrigatorio.']);
+    }
+    if (empty($email)) {
+        jsonResponse(400, ['ok' => false, 'mensagem' => 'Email e obrigatorio.']);
+    }
+
+    // Verificar se CNPJ/CPF ja existe
+    if ($cnpj) {
+        $stmt = $pdo->prepare("SELECT id FROM clientes WHERE cnpj = ?");
+        $stmt->execute([$cnpj]);
+        if ($stmt->fetch()) {
+            // Cliente ja existe - buscar licenca free dele
+            $stmt2 = $pdo->prepare("SELECT l.chave FROM licencas l JOIN clientes c ON l.cliente_id = c.id WHERE c.cnpj = ? AND l.status IN ('disponivel','ativa') ORDER BY l.id DESC LIMIT 1");
+            $stmt2->execute([$cnpj]);
+            $licExistente = $stmt2->fetch();
+            if ($licExistente) {
+                jsonResponse(200, [
+                    'ok' => true,
+                    'mensagem' => 'Empresa ja cadastrada. Licenca recuperada.',
+                    'chave' => $licExistente['chave'],
+                    'tipo' => 'free',
+                ]);
+            }
+            jsonResponse(409, ['ok' => false, 'mensagem' => 'CNPJ ja cadastrado. Entre em contato com o suporte.']);
+        }
+    }
+
+    // Buscar plano Free Desktop
+    $stmt = $pdo->prepare("SELECT id FROM planos WHERE slug = 'desktop-free' LIMIT 1");
+    $stmt->execute();
+    $planoFree = $stmt->fetch();
+    $planoId = $planoFree ? $planoFree['id'] : null;
+
+    // Gerar API token e chave de licenca
+    $apiToken = bin2hex(random_bytes(32));
+    $chave = gerarChaveFree();
+
+    // Garantir chave unica
+    $check = $pdo->prepare("SELECT COUNT(*) FROM licencas WHERE chave = ?");
+    $check->execute([$chave]);
+    while ($check->fetchColumn() > 0) {
+        $chave = gerarChaveFree();
+        $check->execute([$chave]);
+    }
+
+    try {
+        $pdo->beginTransaction();
+
+        // Criar cliente
+        $stmt = $pdo->prepare("INSERT INTO clientes (razao_social, nome_fantasia, cnpj, cpf, email, telefone, whatsapp, contato_nome, cidade, uf, plano_id, status, api_token) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
+        $stmt->execute([$razaoSocial, $nomeFantasia, $cnpj, $cpf, $email, $telefone, $whatsapp, $contatoNome, $cidade, $uf, $planoId, 'ativo', $apiToken]);
+        $clienteId = (int)$pdo->lastInsertId();
+
+        // Criar licenca Free (sem expiracao)
+        $stmt = $pdo->prepare("INSERT INTO licencas (chave, cliente_id, plano_id, tipo, status, hardware_id, data_ativacao, data_vencimento, ultimo_check, ip_ativacao, observacoes) VALUES (?,?,?,?,?,?,NOW(),'2099-12-31 23:59:59',NOW(),?,?)");
+        $stmt->execute([$chave, $clienteId, $planoId, 'mensal', 'ativa', $hardwareId, $_SERVER['REMOTE_ADDR'] ?? '', 'Registro automatico - Plano Free']);
+
+        $pdo->commit();
+
+        logApi($pdo, null, $clienteId, 'registrar', ['cnpj' => $cnpj, 'email' => $email, 'chave' => $chave]);
+
+        jsonResponse(201, [
+            'ok' => true,
+            'mensagem' => 'Cadastro realizado com sucesso! Seu PDV esta ativo.',
+            'chave' => $chave,
+            'tipo' => 'free',
+            'cliente_id' => $clienteId,
+        ]);
+    } catch (\PDOException $e) {
+        $pdo->rollBack();
+        jsonResponse(500, ['ok' => false, 'mensagem' => 'Erro ao cadastrar. Tente novamente.']);
+    }
+}
+
+function gerarChaveFree(): string {
+    $chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    $key = 'F'; // F = Free
+    for ($i = 1; $i < 16; $i++) {
+        $key .= $chars[random_int(0, strlen($chars) - 1)];
+    }
+    return substr($key, 0, 4) . '-' . substr($key, 4, 4) . '-' . substr($key, 8, 4) . '-' . substr($key, 12, 4);
+}
 
 function handleValidar(PDO $pdo): void {
     $input = getInput();
