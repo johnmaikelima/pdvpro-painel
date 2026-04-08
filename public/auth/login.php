@@ -4,7 +4,7 @@ require_once APP_PATH . '/includes/functions.php';
 session_start();
 
 if (isLoggedIn()) {
-    redirect(APP_URL . '/dashboard/');
+    redirect('/dashboard/');
 }
 
 $erro = '';
@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->prepare("UPDATE admins SET ultimo_acesso = NOW() WHERE id = ?")->execute([$admin['id']]);
 
-            redirect(APP_URL . '/dashboard/');
+            redirect('/dashboard/');
         } else {
             $erro = 'Email ou senha incorretos.';
         }
