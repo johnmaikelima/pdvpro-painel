@@ -117,6 +117,36 @@ function planoBadge(string $plano): string {
     return '<span class="badge bg-' . $color . '">' . e(strtoupper($plano)) . '</span>';
 }
 
+function getConfig(PDO $pdo, string $chave, string $default = ''): string {
+    try {
+        $stmt = $pdo->prepare("SELECT valor FROM configuracoes WHERE chave = ?");
+        $stmt->execute([$chave]);
+        $row = $stmt->fetch();
+        return $row ? ($row['valor'] ?? $default) : $default;
+    } catch (\Throwable $e) {
+        return $default;
+    }
+}
+
+function setConfig(PDO $pdo, string $chave, ?string $valor): void {
+    $pdo->prepare("INSERT INTO configuracoes (chave, valor) VALUES (?, ?) ON DUPLICATE KEY UPDATE valor = VALUES(valor)")
+        ->execute([$chave, $valor]);
+}
+
+function getAllConfigs(PDO $pdo, string $prefix = ''): array {
+    if ($prefix) {
+        $stmt = $pdo->prepare("SELECT chave, valor FROM configuracoes WHERE chave LIKE ?");
+        $stmt->execute([$prefix . '%']);
+    } else {
+        $stmt = $pdo->query("SELECT chave, valor FROM configuracoes");
+    }
+    $configs = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $configs[$row['chave']] = $row['valor'] ?? '';
+    }
+    return $configs;
+}
+
 function paginate(PDO $pdo, string $query, array $params, int $page, int $perPage = 20): array {
     $countQuery = preg_replace('/SELECT .+ FROM/i', 'SELECT COUNT(*) FROM', $query);
     $countQuery = preg_replace('/ORDER BY .+$/i', '', $countQuery);
