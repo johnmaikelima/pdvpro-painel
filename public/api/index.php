@@ -1031,8 +1031,8 @@ function handleRegistrarSaas(PDO $pdo): void {
 
     $planoId = $plano ? (int)$plano['id'] : null;
 
-    // Calcular data de vencimento do trial
-    $trialDias = 15; // padrao
+    // Calcular data de vencimento do trial (sempre 15 dias, independente do plano)
+    $trialDias = 15;
     if ($plano && !empty($plano['recursos'])) {
         $recursos = json_decode($plano['recursos'], true);
         if (isset($recursos['trial_dias'])) {
@@ -1040,11 +1040,6 @@ function handleRegistrarSaas(PDO $pdo): void {
         }
     }
     $dataVencimento = date('Y-m-d H:i:s', strtotime("+{$trialDias} days"));
-
-    // Se plano pago, vencimento sera controlado pelo pagamento
-    if ($plano && (float)$plano['preco'] > 0) {
-        $dataVencimento = date('Y-m-d H:i:s', strtotime('+3 days')); // 3 dias para pagar
-    }
 
     // Gerar API token e chave de licenca
     $apiToken = bin2hex(random_bytes(32));
@@ -1065,7 +1060,7 @@ function handleRegistrarSaas(PDO $pdo): void {
 
         // Criar cliente
         $stmt = $pdo->prepare("INSERT INTO clientes (razao_social, nome_fantasia, cnpj, cpf, email, telefone, whatsapp, contato_nome, cidade, uf, plano_id, status, api_token) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
-        $status = ($plano && (float)$plano['preco'] == 0) ? 'trial' : 'ativo';
+        $status = 'trial'; // Todos comecam em trial
         $stmt->execute([$razaoSocial, $nomeFantasia, $cnpj, $cpf, $email, $telefone, $whatsapp, $contatoNome, $cidade, $uf, $planoId, $status, $apiToken]);
         $clienteId = (int)$pdo->lastInsertId();
 
@@ -1101,45 +1096,9 @@ function handleRegistrarSaas(PDO $pdo): void {
             'api_token' => $apiToken,
             'plano' => $plano ? $plano['nome'] : null,
             'plano_slug' => $plano ? $plano['slug'] : null,
-            'trial_dias' => ($plano && (float)$plano['preco'] == 0) ? $trialDias : null,
+            'trial_dias' => $trialDias,
             'data_vencimento' => $dataVencimento,
         ];
-
-        // Se plano pago, criar cobranca no Asaas
-        if ($plano && (float)$plano['preco'] > 0) {
-            try {
-                require_once APP_PATH . '/includes/asaas.php';
-                $asaas = new Asaas($pdo);
-                $cpfCnpj = $cnpj ?: $cpf;
-                $customer = $asaas->getOrCreateCustomer([
-                    'razao_social' => $razaoSocial,
-                    'nome_fantasia' => $nomeFantasia ?: $razaoSocial,
-                    'cnpj' => $cnpj,
-                    'cpf' => $cpf,
-                    'email' => $email,
-                    'telefone' => $telefone ?? $whatsapp ?? '',
-                ]);
-                $asaasCustomerId = $customer['id'];
-                $pdo->prepare("UPDATE clientes SET asaas_customer_id = ? WHERE id = ?")->execute([$asaasCustomerId, $clienteId]);
-
-                $subscription = $asaas->createSubscription([
-                    'customer' => $asaasCustomerId,
-                    'billingType' => 'UNDEFINED',
-                    'value' => (float)$plano['preco'],
-                    'cycle' => strtoupper($plano['periodo'] === 'mensal' ? 'MONTHLY' : ($plano['periodo'] === 'trimestral' ? 'QUARTERLY' : 'YEARLY')),
-                    'description' => 'PDV Pro SaaS - ' . $plano['nome'],
-                    'externalReference' => "saas-{$clienteId}-{$licencaId}",
-                ]);
-
-                $paymentUrl = $subscription['paymentLink'] ?? ($subscription['invoiceUrl'] ?? null);
-                $response['payment_url'] = $paymentUrl;
-                $response['asaas_subscription_id'] = $subscription['id'] ?? null;
-
-            } catch (\Throwable $e) {
-                $response['payment_error'] = 'Cobranca sera gerada em breve. Entre em contato se necessario.';
-                logApi($pdo, $licencaId, $clienteId, 'registrar_saas_asaas_erro', ['erro' => $e->getMessage()]);
-            }
-        }
 
         jsonResponse(201, $response);
     } catch (\PDOException $e) {
