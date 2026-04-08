@@ -378,12 +378,37 @@ function handleReportarNfce(PDO $pdo): void {
 }
 
 function handleChecarAtualizacao(PDO $pdo): void {
-    // Versao mais recente do desktop
+    $input = getInput();
+    $versaoCliente = trim($input['versao'] ?? $_GET['versao'] ?? '');
+    $tipoProduto = trim($input['tipo'] ?? $_GET['tipo'] ?? 'desktop');
+
+    // Buscar versao mais recente ativa
+    $stmt = $pdo->prepare("SELECT * FROM versoes WHERE tipo_produto = ? AND ativa = 1 ORDER BY criado_em DESC LIMIT 1");
+    $stmt->execute([$tipoProduto]);
+    $ultima = $stmt->fetch();
+
+    if (!$ultima) {
+        jsonResponse(200, [
+            'atualizar' => false,
+            'versao_servidor' => APP_VERSION,
+        ]);
+    }
+
+    $temAtualizacao = !empty($versaoCliente) && version_compare($ultima['versao'], $versaoCliente, '>');
+
+    $urlDownload = null;
+    if ($ultima['arquivo_nome']) {
+        $urlDownload = APP_URL . '/versoes/download.php?id=' . $ultima['id'];
+    }
+
     jsonResponse(200, [
-        'versao_atual' => APP_VERSION,
-        'url_download' => null,
-        'obrigatoria' => false,
-        'changelog' => null,
+        'atualizar' => $temAtualizacao,
+        'versao_servidor' => $ultima['versao'],
+        'versao_cliente' => $versaoCliente,
+        'url_download' => $urlDownload,
+        'obrigatoria' => (bool)$ultima['obrigatoria'],
+        'changelog' => $ultima['changelog'],
+        'tamanho' => (int)$ultima['arquivo_tamanho'],
     ]);
 }
 
