@@ -28,6 +28,9 @@ try {
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
 
+// Rate limiting simples por IP
+rateLimitCheck($pdo, $action);
+
 match($action) {
     'registrar' => handleRegistrar($pdo),
     'validar' => handleValidar($pdo),
@@ -37,6 +40,7 @@ match($action) {
     'webhook_asaas' => handleWebhookAsaas($pdo),
     'planos' => handlePlanos($pdo),
     'upgrade' => handleUpgrade($pdo),
+    'verificar_upgrade' => handleVerificarUpgrade($pdo),
     'status_pagamento' => handleStatusPagamento($pdo),
     'status' => jsonResponse(200, ['status' => 'online', 'version' => APP_VERSION]),
     default => jsonResponse(404, ['error' => 'Endpoint nao encontrado']),
@@ -546,6 +550,74 @@ function handleStatusPagamento(PDO $pdo): void {
 }
 
 // ============================================
+//   Verificar Upgrade (auto-ativacao)
+// ============================================
+
+function handleVerificarUpgrade(PDO $pdo): void {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        jsonResponse(405, ['error' => 'Metodo nao permitido']);
+    }
+
+    $input = getInput();
+    $hardwareId = trim($input['hardware_id'] ?? '');
+    $chaveAtual = strtoupper(trim($input['chave_atual'] ?? ''));
+
+    // Validar parametros obrigatorios
+    if (empty($hardwareId) || !preg_match('/^[a-f0-9]{64}$/i', $hardwareId)) {
+        jsonResponse(400, ['ok' => false, 'mensagem' => 'Hardware ID invalido.']);
+    }
+
+    if (empty($chaveAtual)) {
+        jsonResponse(400, ['ok' => false, 'mensagem' => 'Chave atual obrigatoria.']);
+    }
+
+    // Buscar licenca atual para confirmar que o hardware_id pertence a esta chave
+    $stmt = $pdo->prepare("SELECT l.id, l.cliente_id, l.hardware_id FROM licencas l WHERE l.chave = ? AND l.hardware_id = ?");
+    $stmt->execute([$chaveAtual, $hardwareId]);
+    $licAtual = $stmt->fetch();
+
+    if (!$licAtual) {
+        logApi($pdo, null, null, 'verificar_upgrade_negado', ['chave' => $chaveAtual, 'hw' => substr($hardwareId, 0, 12) . '...']);
+        jsonResponse(403, ['ok' => false, 'mensagem' => 'Licenca nao encontrada para este hardware.']);
+    }
+
+    // Buscar licenca paga ativa para o mesmo cliente e hardware
+    $stmt = $pdo->prepare("
+        SELECT l.chave, l.tipo, l.status, l.data_vencimento, p.nome as plano_nome, p.limite_nfce
+        FROM licencas l
+        LEFT JOIN planos p ON l.plano_id = p.id
+        WHERE l.cliente_id = ?
+          AND l.hardware_id = ?
+          AND l.status = 'ativa'
+          AND l.chave != ?
+          AND p.preco > 0
+        ORDER BY l.data_ativacao DESC
+        LIMIT 1
+    ");
+    $stmt->execute([$licAtual['cliente_id'], $hardwareId, $chaveAtual]);
+    $upgrade = $stmt->fetch();
+
+    if (!$upgrade) {
+        jsonResponse(200, ['ok' => true, 'upgrade_disponivel' => false]);
+    }
+
+    logApi($pdo, $licAtual['id'], $licAtual['cliente_id'], 'verificar_upgrade_encontrado', [
+        'nova_chave' => $upgrade['chave'],
+        'plano' => $upgrade['plano_nome'],
+    ]);
+
+    jsonResponse(200, [
+        'ok' => true,
+        'upgrade_disponivel' => true,
+        'chave' => $upgrade['chave'],
+        'tipo' => $upgrade['tipo'],
+        'plano' => $upgrade['plano_nome'],
+        'limite_nfce' => (int)$upgrade['limite_nfce'],
+        'data_vencimento' => $upgrade['data_vencimento'],
+    ]);
+}
+
+// ============================================
 //   Webhook Asaas
 // ============================================
 
@@ -630,6 +702,11 @@ function handleWebhookAsaas(PDO $pdo): void {
                 'pagamento_id' => $pagamentoId,
                 'asaas_id' => $asaasId,
             ]);
+
+            // Enviar email de confirmacao com a chave
+            if (!empty($pagamento['cliente_email']) && !empty($pagamento['chave'])) {
+                enviarEmailLicenca($pdo, $pagamento);
+            }
             break;
 
         case 'PAYMENT_OVERDUE':
@@ -666,4 +743,118 @@ function logApi(PDO $pdo, ?int $licencaId, ?int $clienteId, string $acao, array 
     $ip = $_SERVER['REMOTE_ADDR'] ?? '';
     $pdo->prepare("INSERT INTO api_logs (licenca_id, cliente_id, acao, ip, request_data) VALUES (?,?,?,?,?)")
         ->execute([$licencaId, $clienteId, $acao, $ip, json_encode($data, JSON_UNESCAPED_UNICODE)]);
+}
+
+function rateLimitCheck(PDO $pdo, string $action): void {
+    // Acoes sensiveis: max 30 requests por minuto por IP
+    $acoesSensiveis = ['registrar', 'upgrade', 'ativar', 'verificar_upgrade'];
+    if (!in_array($action, $acoesSensiveis)) return;
+
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    if (empty($ip)) return;
+
+    try {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM api_logs WHERE ip = ? AND acao = ? AND criado_em > DATE_SUB(NOW(), INTERVAL 1 MINUTE)");
+        $stmt->execute([$ip, $action]);
+        $count = (int)$stmt->fetchColumn();
+
+        if ($count >= 30) {
+            jsonResponse(429, ['error' => 'Muitas requisicoes. Aguarde um momento.']);
+        }
+    } catch (\Throwable $e) {
+        // Se a tabela nao existir, ignorar
+    }
+}
+
+function enviarEmailLicenca(PDO $pdo, array $pagamento): void {
+    try {
+        $chave = $pagamento['chave'];
+        $nome = $pagamento['razao_social'] ?? 'Cliente';
+        $email = $pagamento['cliente_email'];
+        $tipo = ucfirst($pagamento['licenca_tipo'] ?? 'mensal');
+
+        // Buscar nome do plano
+        $planoNome = 'Plano Pago';
+        if (!empty($pagamento['plano_id'])) {
+            $stmt = $pdo->prepare("SELECT nome FROM planos WHERE id = ?");
+            $stmt->execute([$pagamento['plano_id']]);
+            $p = $stmt->fetch();
+            if ($p) $planoNome = $p['nome'];
+        }
+
+        $valor = number_format((float)($pagamento['valor'] ?? 0), 2, ',', '.');
+
+        $subject = 'PDV Pro - Licenca Ativada com Sucesso!';
+        $body = <<<HTML
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="font-family: 'Segoe UI', Arial, sans-serif; background: #f1f5f9; margin: 0; padding: 20px;">
+<div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
+
+    <div style="background: linear-gradient(135deg, #0f172a, #1e40af); padding: 30px; text-align: center;">
+        <h1 style="color: #fff; margin: 0; font-size: 24px;">PDV Pro</h1>
+        <p style="color: #93c5fd; margin: 8px 0 0;">Pagamento Confirmado</p>
+    </div>
+
+    <div style="padding: 30px;">
+        <p style="color: #334155; font-size: 16px;">Ola, <strong>{$nome}</strong>!</p>
+
+        <p style="color: #334155;">Seu pagamento foi confirmado e sua licenca esta ativa.</p>
+
+        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 20px; margin: 20px 0; text-align: center;">
+            <p style="color: #166534; font-size: 14px; margin: 0 0 8px;">Sua chave de licenca:</p>
+            <p style="color: #166534; font-size: 28px; font-weight: 800; letter-spacing: 2px; margin: 0; font-family: monospace;">{$chave}</p>
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+            <tr>
+                <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Plano:</td>
+                <td style="padding: 8px 0; color: #1e293b; font-size: 14px; font-weight: 600; text-align: right;">{$planoNome}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Periodo:</td>
+                <td style="padding: 8px 0; color: #1e293b; font-size: 14px; font-weight: 600; text-align: right;">{$tipo}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Valor pago:</td>
+                <td style="padding: 8px 0; color: #1e293b; font-size: 14px; font-weight: 600; text-align: right;">R$ {$valor}</td>
+            </tr>
+        </table>
+
+        <div style="background: #eff6ff; border-radius: 8px; padding: 16px; margin: 20px 0;">
+            <p style="color: #1e40af; font-size: 14px; font-weight: 600; margin: 0 0 8px;">Como ativar:</p>
+            <ol style="color: #334155; font-size: 13px; margin: 0; padding-left: 20px;">
+                <li>Abra o PDV Pro no seu computador</li>
+                <li>A ativacao sera feita automaticamente</li>
+                <li>Caso nao ative sozinho, va em Licenca &gt; Ativar e cole a chave acima</li>
+            </ol>
+        </div>
+
+        <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">
+            Guarde esta chave em local seguro. Ela esta vinculada ao seu computador e nao pode ser usada em outra maquina.<br>
+            Em caso de duvidas, entre em contato com o suporte.
+        </p>
+    </div>
+
+    <div style="background: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0;">
+        <p style="color: #94a3b8; font-size: 12px; margin: 0;">PDV Pro - Sistema de Ponto de Venda</p>
+    </div>
+</div>
+</body>
+</html>
+HTML;
+
+        sendMail($pdo, $email, $subject, $body);
+
+        logApi($pdo, $pagamento['licenca_id'] ?? null, $pagamento['cliente_id'] ?? null, 'email_licenca_enviado', [
+            'email' => $email,
+            'chave' => substr($chave, 0, 4) . '-****-****-****',
+        ]);
+    } catch (\Throwable $e) {
+        // Nao bloquear webhook se email falhar
+        logApi($pdo, $pagamento['licenca_id'] ?? null, $pagamento['cliente_id'] ?? null, 'email_licenca_erro', [
+            'erro' => $e->getMessage(),
+        ]);
+    }
 }
