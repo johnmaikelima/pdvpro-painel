@@ -6,6 +6,7 @@
 
 require_once dirname(__DIR__, 2) . '/app/config.php';
 require_once APP_PATH . '/includes/functions.php';
+require_once APP_PATH . '/includes/mailer.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -33,6 +34,7 @@ match($action) {
     'ativar' => handleAtivar($pdo),
     'reportar_nfce' => handleReportarNfce($pdo),
     'checar_atualizacao' => handleChecarAtualizacao($pdo),
+    'webhook_asaas' => handleWebhookAsaas($pdo),
     'status' => jsonResponse(200, ['status' => 'online', 'version' => APP_VERSION]),
     default => jsonResponse(404, ['error' => 'Endpoint nao encontrado']),
 };
@@ -353,6 +355,106 @@ function handleChecarAtualizacao(PDO $pdo): void {
         'obrigatoria' => false,
         'changelog' => null,
     ]);
+}
+
+// ============================================
+//   Webhook Asaas
+// ============================================
+
+function handleWebhookAsaas(PDO $pdo): void {
+    $payload = file_get_contents('php://input');
+    $data = json_decode($payload, true);
+
+    if (!$data || empty($data['event']) || empty($data['payment'])) {
+        jsonResponse(400, ['error' => 'Payload invalido']);
+    }
+
+    // Validar webhook secret (opcional)
+    try {
+        $secret = getConfig($pdo, 'asaas_webhook_secret');
+        if (!empty($secret)) {
+            $token = $_SERVER['HTTP_ASAAS_ACCESS_TOKEN'] ?? '';
+            if ($token !== $secret) {
+                logApi($pdo, null, null, 'webhook_asaas', ['erro' => 'Token invalido', 'event' => $data['event']]);
+                jsonResponse(401, ['error' => 'Token invalido']);
+            }
+        }
+    } catch (\Throwable $e) {
+        // tabela configuracoes pode nao existir ainda, ignorar
+    }
+
+    $event = $data['event'];
+    $payment = $data['payment'];
+    $asaasId = $payment['id'] ?? '';
+    $externalRef = $payment['externalReference'] ?? '';
+
+    logApi($pdo, null, null, 'webhook_asaas', ['event' => $event, 'asaas_id' => $asaasId, 'ref' => $externalRef, 'status' => $payment['status'] ?? '']);
+
+    // Buscar pagamento local pela referencia (PAG-{pagamento_id})
+    $pagamentoId = null;
+    if (str_starts_with($externalRef, 'PAG-')) {
+        $pagamentoId = (int)substr($externalRef, 4);
+    }
+
+    if (!$pagamentoId) {
+        // Tentar buscar pelo asaas_id na tabela pagamentos
+        $stmt = $pdo->prepare("SELECT id FROM pagamentos WHERE referencia = ?");
+        $stmt->execute([$asaasId]);
+        $row = $stmt->fetch();
+        if ($row) $pagamentoId = (int)$row['id'];
+    }
+
+    if (!$pagamentoId) {
+        jsonResponse(200, ['ok' => true, 'msg' => 'Pagamento nao encontrado localmente, ignorado.']);
+    }
+
+    // Buscar dados do pagamento
+    $stmt = $pdo->prepare("SELECT p.*, l.id as licenca_id, l.chave, l.tipo as licenca_tipo, c.email as cliente_email, c.razao_social FROM pagamentos p LEFT JOIN licencas l ON p.licenca_id = l.id LEFT JOIN clientes c ON p.cliente_id = c.id WHERE p.id = ?");
+    $stmt->execute([$pagamentoId]);
+    $pagamento = $stmt->fetch();
+
+    if (!$pagamento) {
+        jsonResponse(200, ['ok' => true, 'msg' => 'Pagamento local nao encontrado.']);
+    }
+
+    switch ($event) {
+        case 'PAYMENT_CONFIRMED':
+        case 'PAYMENT_RECEIVED':
+            // Marcar pagamento como pago
+            $pdo->prepare("UPDATE pagamentos SET status = 'pago', data_pagamento = NOW(), referencia = ? WHERE id = ?")
+                ->execute([$asaasId, $pagamentoId]);
+
+            // Ativar/renovar licenca
+            if ($pagamento['licenca_id']) {
+                $dias = diasPlano($pagamento['licenca_tipo'] ?? 'mensal');
+                $vencimento = date('Y-m-d H:i:s', strtotime("+{$dias} days"));
+
+                $pdo->prepare("UPDATE licencas SET status = 'ativa', data_vencimento = ? WHERE id = ?")
+                    ->execute([$vencimento, $pagamento['licenca_id']]);
+
+                // Atualizar cliente para ativo
+                if ($pagamento['cliente_id']) {
+                    $pdo->prepare("UPDATE clientes SET status = 'ativo' WHERE id = ?")->execute([$pagamento['cliente_id']]);
+                }
+            }
+
+            logApi($pdo, $pagamento['licenca_id'], $pagamento['cliente_id'], 'webhook_pagamento_confirmado', [
+                'pagamento_id' => $pagamentoId,
+                'asaas_id' => $asaasId,
+            ]);
+            break;
+
+        case 'PAYMENT_OVERDUE':
+            $pdo->prepare("UPDATE pagamentos SET status = 'pendente' WHERE id = ?")->execute([$pagamentoId]);
+            break;
+
+        case 'PAYMENT_DELETED':
+        case 'PAYMENT_REFUNDED':
+            $pdo->prepare("UPDATE pagamentos SET status = 'cancelado' WHERE id = ?")->execute([$pagamentoId]);
+            break;
+    }
+
+    jsonResponse(200, ['ok' => true]);
 }
 
 // ============================================
