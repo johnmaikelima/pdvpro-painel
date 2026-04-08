@@ -1,5 +1,6 @@
 <?php
 require_once dirname(__DIR__, 2) . '/app/bootstrap.php';
+requireLogin();
 
 $id = (int)($_GET['id'] ?? 0);
 $stmt = $pdo->prepare("SELECT c.*, p.nome as plano_nome, p.limite_nfce FROM clientes c LEFT JOIN planos p ON c.plano_id = p.id WHERE c.id = ?");
