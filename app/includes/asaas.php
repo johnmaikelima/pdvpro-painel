@@ -154,6 +154,44 @@ class Asaas
         return $this->request('DELETE', '/payments/' . $paymentId);
     }
 
+    // ========== Assinaturas ==========
+
+    public function createSubscription(array $data): array
+    {
+        $cycle = match($data['periodo'] ?? 'mensal') {
+            'trimestral' => 'QUARTERLY',
+            'semestral' => 'SEMIANNUALLY',
+            'anual' => 'YEARLY',
+            default => 'MONTHLY',
+        };
+
+        return $this->request('POST', '/subscriptions', [
+            'customer' => $data['customer_id'],
+            'billingType' => $data['billing_type'] ?? 'UNDEFINED',
+            'value' => (float)$data['valor'],
+            'nextDueDate' => $data['vencimento'],
+            'cycle' => $cycle,
+            'description' => $data['descricao'] ?? '',
+            'externalReference' => $data['referencia'] ?? null,
+            'maxPayments' => $data['max_payments'] ?? null,
+        ]);
+    }
+
+    public function getSubscription(string $subscriptionId): array
+    {
+        return $this->request('GET', '/subscriptions/' . $subscriptionId);
+    }
+
+    public function cancelSubscription(string $subscriptionId): ?array
+    {
+        return $this->request('DELETE', '/subscriptions/' . $subscriptionId);
+    }
+
+    public function getSubscriptionPayments(string $subscriptionId): array
+    {
+        return $this->request('GET', '/subscriptions/' . $subscriptionId . '/payments');
+    }
+
     public function testConnection(): array
     {
         return $this->request('GET', '/finance/balance');

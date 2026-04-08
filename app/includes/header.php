@@ -36,6 +36,9 @@ $currentPage = basename(dirname($_SERVER['PHP_SELF']));
             <a href="<?= APP_URL ?>/planos/" class="nav-link <?= $currentPage === 'planos' ? 'active' : '' ?>">
                 <i class="fas fa-tags"></i> Planos
             </a>
+            <a href="<?= APP_URL ?>/faturamento/" class="nav-link <?= $currentPage === 'faturamento' ? 'active' : '' ?>">
+                <i class="fas fa-file-invoice-dollar"></i> Faturamento
+            </a>
             <a href="<?= APP_URL ?>/configuracao/" class="nav-link <?= $currentPage === 'configuracao' ? 'active' : '' ?>">
                 <i class="fas fa-cog"></i> Configuracoes
             </a>

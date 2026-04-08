@@ -242,10 +242,30 @@ function handleValidar(PDO $pdo): void {
 
     $nfceLiberada = ($limiteNfce === 0) || ($nfceEmitidas < $limiteNfce);
 
+    // Verificar inadimplencia
+    $inadimplente = false;
+    $inadimplenteDias = 0;
+    $inadimplenteBloqueio = false;
+    if (!empty($licenca['inadimplente_desde'])) {
+        $inadimplente = true;
+        $inadimplenteDias = (int)((time() - strtotime($licenca['inadimplente_desde'])) / 86400);
+
+        try {
+            $bloqDias = (int)getConfig($pdo, 'inadimplencia_bloqueio_dias', '15');
+        } catch (\Throwable $e) {
+            $bloqDias = 15;
+        }
+
+        if ($inadimplenteDias >= $bloqDias) {
+            $inadimplenteBloqueio = true;
+            $nfceLiberada = false;
+        }
+    }
+
     logApi($pdo, $licenca['id'], $licenca['cliente_id'], 'validar', ['resultado' => 'ativa']);
 
     jsonResponse(200, [
-        'status' => 'ativa',
+        'status' => $inadimplenteBloqueio ? 'inadimplente_bloqueado' : 'ativa',
         'tipo' => $licenca['tipo'],
         'plano' => $licenca['plano_nome'] ?? 'Sem plano',
         'dias_restantes' => $diasRestantes,
@@ -254,6 +274,9 @@ function handleValidar(PDO $pdo): void {
         'nfce_limite_mes' => $limiteNfce,
         'nfce_liberada' => $nfceLiberada,
         'alerta_vencimento' => $diasRestantes <= 7,
+        'inadimplente' => $inadimplente,
+        'inadimplente_dias' => $inadimplenteDias,
+        'inadimplente_bloqueio' => $inadimplenteBloqueio,
     ]);
 }
 
@@ -451,8 +474,6 @@ function handleUpgrade(PDO $pdo): void {
                 'telefone' => $lic['telefone'] ?? $lic['whatsapp'] ?? '',
             ]);
             $asaasCustomerId = $customer['id'];
-
-            // Salvar asaas_customer_id no cliente
             $pdo->prepare("UPDATE clientes SET asaas_customer_id = ? WHERE id = ?")->execute([$asaasCustomerId, $lic['cid']]);
         }
 
@@ -464,51 +485,62 @@ function handleUpgrade(PDO $pdo): void {
             ->execute([$novaChave, $lic['cid'], $plano['id'], $plano['periodo'], 'disponivel', $lic['hardware_id'], 'Aguardando pagamento - upgrade de ' . $chave]);
         $novaLicId = (int)$pdo->lastInsertId();
 
-        // Criar pagamento no Asaas
-        $descricao = "PDV Pro - {$plano['nome']} - {$lic['razao_social']}";
+        // Criar assinatura recorrente no Asaas
+        $descricao = "PDV Pro - {$plano['nome']}";
         $vencimento = date('Y-m-d', strtotime('+3 days'));
 
-        $payment = $asaas->createPayment([
+        $subscription = $asaas->createSubscription([
             'customer_id' => $asaasCustomerId,
             'billing_type' => 'UNDEFINED',
             'valor' => $plano['preco'],
             'vencimento' => $vencimento,
+            'periodo' => $plano['periodo'],
             'descricao' => $descricao,
-            'referencia' => 'PAG-PENDING',
+            'referencia' => "LIC-{$novaLicId}",
         ]);
 
-        $asaasId = $payment['id'] ?? '';
-        $invoiceUrl = $payment['invoiceUrl'] ?? '';
+        $subscriptionId = $subscription['id'] ?? '';
 
-        // Criar registro de pagamento local
-        $pdo->prepare("INSERT INTO pagamentos (cliente_id, licenca_id, plano_id, valor, forma, status, referencia, asaas_id, asaas_url, mes_referencia, observacoes) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
-            ->execute([$lic['cid'], $novaLicId, $plano['id'], $plano['preco'], 'pix', 'pendente', "PAG-PENDING", $asaasId, $invoiceUrl, date('Y-m'), $descricao]);
-        $pagId = (int)$pdo->lastInsertId();
+        // Buscar primeira cobranca da assinatura para obter invoiceUrl
+        $invoiceUrl = '';
+        if ($subscriptionId) {
+            try {
+                $payments = $asaas->getSubscriptionPayments($subscriptionId);
+                if (!empty($payments['data'][0])) {
+                    $firstPayment = $payments['data'][0];
+                    $invoiceUrl = $firstPayment['invoiceUrl'] ?? '';
+                    $asaasPaymentId = $firstPayment['id'] ?? '';
 
-        // Atualizar referencia com o ID real
-        $pdo->prepare("UPDATE pagamentos SET referencia = ? WHERE id = ?")->execute(["PAG-{$pagId}", $pagId]);
+                    // Registrar primeiro pagamento
+                    $pdo->prepare("INSERT INTO pagamentos (cliente_id, licenca_id, plano_id, valor, forma, status, referencia, asaas_id, asaas_url, asaas_subscription_id, tipo_cobranca, mes_referencia, observacoes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+                        ->execute([$lic['cid'], $novaLicId, $plano['id'], $plano['preco'], 'pix', 'pendente', "LIC-{$novaLicId}", $asaasPaymentId, $invoiceUrl, $subscriptionId, 'recorrente', date('Y-m'), $descricao]);
+                }
+            } catch (\Throwable $e) {
+                // Se nao conseguir buscar pagamentos, usar URL da assinatura
+            }
+        }
 
-        // Atualizar referencia no Asaas tambem
-        // (nao essencial, mas ajuda no webhook)
+        // Salvar subscription_id na licenca
+        $pdo->prepare("UPDATE licencas SET asaas_subscription_id = ?, observacoes = ? WHERE id = ?")
+            ->execute([$subscriptionId, "Assinatura: {$subscriptionId}", $novaLicId]);
 
-        // Atualizar licenca com referencia ao pagamento
-        $pdo->prepare("UPDATE licencas SET observacoes = ? WHERE id = ?")->execute(["Pagamento #{$pagId} - Asaas: {$asaasId}", $novaLicId]);
+        // Atualizar plano do cliente
+        $pdo->prepare("UPDATE clientes SET plano_id = ? WHERE id = ?")->execute([$plano['id'], $lic['cid']]);
 
         logApi($pdo, $lic['id'], $lic['cid'], 'upgrade', [
             'plano' => $planoSlug,
-            'asaas_id' => $asaasId,
+            'subscription_id' => $subscriptionId,
             'nova_chave' => $novaChave,
-            'pagamento_id' => $pagId,
         ]);
 
         jsonResponse(201, [
             'ok' => true,
-            'mensagem' => 'Cobranca gerada! Pague para ativar seu plano.',
+            'mensagem' => 'Assinatura criada! Pague a primeira cobranca para ativar.',
             'payment_url' => $invoiceUrl,
             'plano' => $plano['nome'],
             'valor' => $plano['preco'],
+            'periodo' => $plano['periodo'],
             'nova_chave' => $novaChave,
-            'pagamento_id' => $pagId,
         ]);
 
     } catch (Exception $e) {
@@ -664,12 +696,41 @@ function handleWebhookAsaas(PDO $pdo): void {
         if ($row) $pagamentoId = (int)$row['id'];
     }
 
+    // Pagamento recorrente pode nao existir localmente ainda (Asaas gera automaticamente)
+    // Nesse caso, buscar pela subscription e criar registro local
+    $subscriptionId = $payment['subscription'] ?? '';
+
+    if (!$pagamentoId && $subscriptionId) {
+        // Buscar licenca pela subscription
+        $stmt = $pdo->prepare("SELECT l.id, l.cliente_id, l.plano_id, l.tipo FROM licencas l WHERE l.asaas_subscription_id = ?");
+        $stmt->execute([$subscriptionId]);
+        $licSub = $stmt->fetch();
+
+        if ($licSub) {
+            // Buscar plano para pegar preco
+            $stmtP = $pdo->prepare("SELECT preco, nome FROM planos WHERE id = ?");
+            $stmtP->execute([$licSub['plano_id']]);
+            $planoSub = $stmtP->fetch();
+
+            // Criar pagamento local para essa cobranca recorrente
+            $pdo->prepare("INSERT INTO pagamentos (cliente_id, licenca_id, plano_id, valor, forma, status, referencia, asaas_id, asaas_url, asaas_subscription_id, tipo_cobranca, mes_referencia, observacoes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+                ->execute([
+                    $licSub['cliente_id'], $licSub['id'], $licSub['plano_id'],
+                    $planoSub['preco'] ?? 0, 'pix', 'pendente',
+                    "LIC-{$licSub['id']}", $asaasId, $payment['invoiceUrl'] ?? '',
+                    $subscriptionId, 'recorrente', date('Y-m'),
+                    "Cobranca recorrente - {$planoSub['nome']}"
+                ]);
+            $pagamentoId = (int)$pdo->lastInsertId();
+        }
+    }
+
     if (!$pagamentoId) {
         jsonResponse(200, ['ok' => true, 'msg' => 'Pagamento nao encontrado localmente, ignorado.']);
     }
 
     // Buscar dados do pagamento
-    $stmt = $pdo->prepare("SELECT p.*, l.id as licenca_id, l.chave, l.tipo as licenca_tipo, c.email as cliente_email, c.razao_social FROM pagamentos p LEFT JOIN licencas l ON p.licenca_id = l.id LEFT JOIN clientes c ON p.cliente_id = c.id WHERE p.id = ?");
+    $stmt = $pdo->prepare("SELECT p.*, l.id as licenca_id, l.chave, l.tipo as licenca_tipo, l.asaas_subscription_id, c.id as cid, c.email as cliente_email, c.razao_social FROM pagamentos p LEFT JOIN licencas l ON p.licenca_id = l.id LEFT JOIN clientes c ON p.cliente_id = c.id WHERE p.id = ?");
     $stmt->execute([$pagamentoId]);
     $pagamento = $stmt->fetch();
 
@@ -681,29 +742,27 @@ function handleWebhookAsaas(PDO $pdo): void {
         case 'PAYMENT_CONFIRMED':
         case 'PAYMENT_RECEIVED':
             // Marcar pagamento como pago
-            $pdo->prepare("UPDATE pagamentos SET status = 'pago', data_pagamento = NOW(), referencia = ? WHERE id = ?")
-                ->execute([$asaasId, $pagamentoId]);
+            $pdo->prepare("UPDATE pagamentos SET status = 'pago', data_pagamento = NOW() WHERE id = ?")
+                ->execute([$pagamentoId]);
 
             // Ativar/renovar licenca
             if ($pagamento['licenca_id']) {
                 $dias = diasPlano($pagamento['licenca_tipo'] ?? 'mensal');
                 $vencimento = date('Y-m-d H:i:s', strtotime("+{$dias} days"));
 
-                $pdo->prepare("UPDATE licencas SET status = 'ativa', data_ativacao = NOW(), data_vencimento = ?, ultimo_check = NOW() WHERE id = ?")
+                $pdo->prepare("UPDATE licencas SET status = 'ativa', data_ativacao = COALESCE(data_ativacao, NOW()), data_vencimento = ?, ultimo_check = NOW(), inadimplente_desde = NULL WHERE id = ?")
                     ->execute([$vencimento, $pagamento['licenca_id']]);
 
-                // Atualizar cliente para ativo
-                if ($pagamento['cliente_id']) {
-                    $pdo->prepare("UPDATE clientes SET status = 'ativo' WHERE id = ?")->execute([$pagamento['cliente_id']]);
+                if ($pagamento['cid']) {
+                    $pdo->prepare("UPDATE clientes SET status = 'ativo' WHERE id = ?")->execute([$pagamento['cid']]);
                 }
             }
 
-            logApi($pdo, $pagamento['licenca_id'], $pagamento['cliente_id'], 'webhook_pagamento_confirmado', [
-                'pagamento_id' => $pagamentoId,
-                'asaas_id' => $asaasId,
+            logApi($pdo, $pagamento['licenca_id'], $pagamento['cid'], 'webhook_pagamento_confirmado', [
+                'pagamento_id' => $pagamentoId, 'asaas_id' => $asaasId,
             ]);
 
-            // Enviar email de confirmacao com a chave
+            // Enviar email de confirmacao
             if (!empty($pagamento['cliente_email']) && !empty($pagamento['chave'])) {
                 enviarEmailLicenca($pdo, $pagamento);
             }
@@ -711,6 +770,20 @@ function handleWebhookAsaas(PDO $pdo): void {
 
         case 'PAYMENT_OVERDUE':
             $pdo->prepare("UPDATE pagamentos SET status = 'pendente' WHERE id = ?")->execute([$pagamentoId]);
+
+            // Marcar inadimplencia na licenca (se ainda nao marcado)
+            if ($pagamento['licenca_id']) {
+                $pdo->prepare("UPDATE licencas SET inadimplente_desde = COALESCE(inadimplente_desde, CURDATE()) WHERE id = ?")
+                    ->execute([$pagamento['licenca_id']]);
+
+                if ($pagamento['cid']) {
+                    $pdo->prepare("UPDATE clientes SET status = 'inadimplente' WHERE id = ?")->execute([$pagamento['cid']]);
+                }
+            }
+
+            logApi($pdo, $pagamento['licenca_id'], $pagamento['cid'], 'webhook_inadimplente', [
+                'pagamento_id' => $pagamentoId, 'asaas_id' => $asaasId,
+            ]);
             break;
 
         case 'PAYMENT_DELETED':
