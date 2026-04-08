@@ -1,0 +1,10 @@
+RewriteEngine On
+
+# Proteger arquivos sensiveis
+<FilesMatch "\.(env|key|sqlite|log)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Bloquear acesso a pasta app
+RewriteRule ^app/ - [F,L]
