@@ -1,0 +1,8 @@
+[phases.setup]
+nixPkgs = ["php83", "php83Extensions.pdo_mysql", "php83Extensions.mysqli"]
+
+[phases.build]
+cmds = ["mkdir -p /app/storage"]
+
+[start]
+cmd = "php -S 0.0.0.0:8080 -t public"
