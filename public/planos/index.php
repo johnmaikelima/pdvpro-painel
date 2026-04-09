@@ -43,9 +43,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     } elseif ($acao === 'editar') {
         $id = (int)($_POST['id'] ?? 0);
+        $recursos = trim($_POST['recursos'] ?? '');
         if ($id && !empty($nome)) {
-            $pdo->prepare("UPDATE planos SET nome = ?, preco = ?, limite_nfce = ?, limite_terminais = ?, ativo = ? WHERE id = ?")
-                ->execute([$nome, $preco, $limiteNfce, $limiteTerminais, $ativo, $id]);
+            $pdo->prepare("UPDATE planos SET nome = ?, preco = ?, limite_nfce = ?, limite_terminais = ?, recursos = ?, ativo = ? WHERE id = ?")
+                ->execute([$nome, $preco, $limiteNfce, $limiteTerminais, $recursos ?: null, $ativo, $id]);
             flash('success', "Plano \"{$nome}\" atualizado!");
         }
     }
@@ -164,10 +165,16 @@ include APP_PATH . '/includes/header.php';
                         </div>
                     </div>
 
+                    <div class="mb-3 mt-3">
+                        <label class="form-label">Recursos (JSON)</label>
+                        <textarea name="recursos" class="form-control" rows="4" placeholder='{"descricao": "...", "beneficios": ["..."]}'><?= e($p['recursos'] ?? '') ?></textarea>
+                        <small class="text-muted">JSON com descrição, benefícios e destaque. Ex: {"descricao": "Para pequenos negócios", "destaque": true, "beneficios": ["Item 1", "Item 2"]}</small>
+                    </div>
+
                     <div class="mt-3">
                         <div class="form-check form-switch">
                             <input class="form-check-input" type="checkbox" name="ativo" value="1" id="ativo<?= $p['id'] ?>" <?= $p['ativo'] ? 'checked' : '' ?>>
-                            <label class="form-check-label" for="ativo<?= $p['id'] ?>">Plano ativo (visivel para clientes)</label>
+                            <label class="form-check-label" for="ativo<?= $p['id'] ?>">Plano ativo (visível para clientes)</label>
                         </div>
                     </div>
                 </div>
