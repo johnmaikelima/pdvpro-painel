@@ -14,6 +14,29 @@ if (!$cliente) {
 
 $pageTitle = $cliente['nome_fantasia'] ?: $cliente['razao_social'];
 
+// Excluir cliente
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'excluir') {
+    if (!verifyCsrf()) {
+        flash('danger', 'Token CSRF inválido.');
+        redirect("view.php?id={$id}");
+    }
+
+    try {
+        $pdo->beginTransaction();
+        $pdo->prepare("DELETE FROM pagamentos WHERE cliente_id = ?")->execute([$id]);
+        $pdo->prepare("DELETE FROM licencas WHERE cliente_id = ?")->execute([$id]);
+        $pdo->prepare("DELETE FROM api_logs WHERE cliente_id = ?")->execute([$id]);
+        $pdo->prepare("DELETE FROM clientes WHERE id = ?")->execute([$id]);
+        $pdo->commit();
+        flash('success', "Cliente \"{$pageTitle}\" excluído com sucesso.");
+        redirect('index.php');
+    } catch (\PDOException $e) {
+        $pdo->rollBack();
+        flash('danger', 'Erro ao excluir cliente.');
+        redirect("view.php?id={$id}");
+    }
+}
+
 // Licencas do cliente
 $licencas = $pdo->prepare("SELECT * FROM licencas WHERE cliente_id = ? ORDER BY criado_em DESC");
 $licencas->execute([$id]);
@@ -36,6 +59,11 @@ include APP_PATH . '/includes/header.php';
     <h2><i class="fas fa-building me-2"></i><?= e($pageTitle) ?></h2>
     <div>
         <a href="form.php?id=<?= $id ?>" class="btn btn-outline-primary"><i class="fas fa-edit me-1"></i>Editar</a>
+        <form method="POST" class="d-inline ms-1" onsubmit="return confirm('Tem certeza que deseja excluir este cliente? Todas as licenças e pagamentos serão removidos.')">
+            <?= csrfField() ?>
+            <input type="hidden" name="acao" value="excluir">
+            <button type="submit" class="btn btn-outline-danger"><i class="fas fa-trash me-1"></i>Excluir</button>
+        </form>
         <a href="index.php" class="btn btn-outline-secondary ms-1"><i class="fas fa-arrow-left me-1"></i>Voltar</a>
     </div>
 </div>
