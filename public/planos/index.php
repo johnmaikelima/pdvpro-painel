@@ -51,6 +51,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ->execute([$nome, $preco, $precoMensal, $precoTrimestral, $precoSemestral, $precoAnual, $limiteNfce, $limiteTerminais, $recursos ?: null, $ativo, $id]);
             flash('success', "Plano \"{$nome}\" atualizado!");
         }
+
+    } elseif ($acao === 'excluir') {
+        $id = (int)($_POST['id'] ?? 0);
+        if ($id) {
+            // Verificar se tem clientes ou licenças vinculados
+            $check = $pdo->prepare("SELECT (SELECT COUNT(*) FROM clientes WHERE plano_id = ?) + (SELECT COUNT(*) FROM licencas WHERE plano_id = ?) as total");
+            $check->execute([$id, $id]);
+            if ((int)$check->fetchColumn() > 0) {
+                flash('danger', 'Não é possível excluir um plano com clientes ou licenças vinculados.');
+            } else {
+                $pdo->prepare("DELETE FROM planos WHERE id = ?")->execute([$id]);
+                flash('success', 'Plano excluído com sucesso.');
+            }
+        }
     }
 
     redirect('index.php');
@@ -119,6 +133,14 @@ include APP_PATH . '/includes/header.php';
                             <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editModal<?= $p['id'] ?>">
                                 <i class="fas fa-edit"></i>
                             </button>
+                            <?php if ($p['total_clientes'] == 0 && $p['total_licencas'] == 0): ?>
+                            <form method="POST" class="d-inline" onsubmit="return confirm('Excluir o plano \'<?= e($p['nome']) ?>\'?')">
+                                <?= csrfField() ?>
+                                <input type="hidden" name="acao" value="excluir">
+                                <input type="hidden" name="id" value="<?= $p['id'] ?>">
+                                <button type="submit" class="btn btn-sm btn-outline-danger ms-1"><i class="fas fa-trash"></i></button>
+                            </form>
+                            <?php endif; ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>
