@@ -14,22 +14,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = $_POST['acao'] ?? 'editar';
     $nome = trim($_POST['nome'] ?? '');
     $preco = (float)str_replace(',', '.', $_POST['preco'] ?? '0');
+    $precoMensal = !empty($_POST['preco_mensal']) ? (float)str_replace(',', '.', $_POST['preco_mensal']) : null;
+    $precoTrimestral = !empty($_POST['preco_trimestral']) ? (float)str_replace(',', '.', $_POST['preco_trimestral']) : null;
+    $precoSemestral = !empty($_POST['preco_semestral']) ? (float)str_replace(',', '.', $_POST['preco_semestral']) : null;
+    $precoAnual = !empty($_POST['preco_anual']) ? (float)str_replace(',', '.', $_POST['preco_anual']) : null;
     $limiteNfce = (int)($_POST['limite_nfce'] ?? 0);
     $limiteTerminais = (int)($_POST['limite_terminais'] ?? 1);
     $ativo = (int)($_POST['ativo'] ?? 0);
+    $recursos = trim($_POST['recursos'] ?? '');
 
     if ($acao === 'criar' && !empty($nome)) {
         $slug = trim($_POST['slug'] ?? '');
         $tipoProduto = $_POST['tipo_produto'] ?? 'desktop';
         $periodo = $_POST['periodo'] ?? 'mensal';
-        $recursos = trim($_POST['recursos'] ?? '');
 
         if (empty($slug)) {
             $slug = strtolower(preg_replace('/[^a-zA-Z0-9-]/', '-', $nome));
             $slug = preg_replace('/-+/', '-', trim($slug, '-'));
         }
 
-        // Verificar slug duplicado
         $existe = $pdo->prepare("SELECT id FROM planos WHERE slug = ?");
         $existe->execute([$slug]);
         if ($existe->fetch()) {
@@ -37,16 +40,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('index.php');
         }
 
-        $pdo->prepare("INSERT INTO planos (nome, slug, tipo_produto, periodo, preco, limite_nfce, limite_terminais, recursos, ativo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-            ->execute([$nome, $slug, $tipoProduto, $periodo, $preco, $limiteNfce, $limiteTerminais, $recursos ?: null, $ativo]);
+        $pdo->prepare("INSERT INTO planos (nome, slug, tipo_produto, periodo, preco, preco_mensal, preco_trimestral, preco_semestral, preco_anual, limite_nfce, limite_terminais, recursos, ativo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+            ->execute([$nome, $slug, $tipoProduto, $periodo, $preco, $precoMensal, $precoTrimestral, $precoSemestral, $precoAnual, $limiteNfce, $limiteTerminais, $recursos ?: null, $ativo]);
         flash('success', "Plano \"{$nome}\" criado com sucesso!");
 
     } elseif ($acao === 'editar') {
         $id = (int)($_POST['id'] ?? 0);
-        $recursos = trim($_POST['recursos'] ?? '');
         if ($id && !empty($nome)) {
-            $pdo->prepare("UPDATE planos SET nome = ?, preco = ?, limite_nfce = ?, limite_terminais = ?, recursos = ?, ativo = ? WHERE id = ?")
-                ->execute([$nome, $preco, $limiteNfce, $limiteTerminais, $recursos ?: null, $ativo, $id]);
+            $pdo->prepare("UPDATE planos SET nome = ?, preco = ?, preco_mensal = ?, preco_trimestral = ?, preco_semestral = ?, preco_anual = ?, limite_nfce = ?, limite_terminais = ?, recursos = ?, ativo = ? WHERE id = ?")
+                ->execute([$nome, $preco, $precoMensal, $precoTrimestral, $precoSemestral, $precoAnual, $limiteNfce, $limiteTerminais, $recursos ?: null, $ativo, $id]);
             flash('success', "Plano \"{$nome}\" atualizado!");
         }
     }
@@ -80,13 +82,12 @@ include APP_PATH . '/includes/header.php';
             <thead>
                 <tr>
                     <th>Nome</th>
-                    <th>Periodo</th>
-                    <th>Preco</th>
-                    <th>NFC-e/mes</th>
+                    <th>Preços</th>
+                    <th>NFC-e/mês</th>
                     <th>Terminais</th>
                     <th>Clientes</th>
                     <th>Status</th>
-                    <th width="100">Acoes</th>
+                    <th width="100">Ações</th>
                 </tr>
             </thead>
             <tbody>
@@ -97,11 +98,22 @@ include APP_PATH . '/includes/header.php';
                             <strong><?= e($p['nome']) ?></strong>
                             <br><small class="text-muted"><?= e($p['slug']) ?></small>
                         </td>
-                        <td><?= e(ucfirst($p['periodo'])) ?></td>
-                        <td class="fw-bold"><?= $p['preco'] > 0 ? formatMoney((float)$p['preco']) : '<span class="text-success">Gratis</span>' ?></td>
+                        <td>
+                            <?php if ((float)$p['preco'] == 0 && !$p['preco_mensal']): ?>
+                                <span class="text-success fw-bold">Grátis</span>
+                            <?php else: ?>
+                                <?php if ($p['preco_mensal']): ?><small>Mensal: <strong><?= formatMoney((float)$p['preco_mensal']) ?></strong></small><br><?php endif; ?>
+                                <?php if ($p['preco_trimestral']): ?><small>Trim: <?= formatMoney((float)$p['preco_trimestral']) ?></small><br><?php endif; ?>
+                                <?php if ($p['preco_semestral']): ?><small>Sem: <?= formatMoney((float)$p['preco_semestral']) ?></small><br><?php endif; ?>
+                                <?php if ($p['preco_anual']): ?><small>Anual: <?= formatMoney((float)$p['preco_anual']) ?></small><?php endif; ?>
+                                <?php if (!$p['preco_mensal'] && !$p['preco_trimestral'] && !$p['preco_semestral'] && !$p['preco_anual']): ?>
+                                    <strong><?= formatMoney((float)$p['preco']) ?></strong>
+                                <?php endif; ?>
+                            <?php endif; ?>
+                        </td>
                         <td><?= $p['limite_nfce'] > 0 ? number_format($p['limite_nfce'], 0, ',', '.') : '<span class="text-primary">Ilimitado</span>' ?></td>
                         <td><?= $p['limite_terminais'] > 0 ? $p['limite_terminais'] : 'Ilimitado' ?></td>
-                        <td><?= $p['total_clientes'] ?> clientes<br><small class="text-muted"><?= $p['total_licencas'] ?> licencas</small></td>
+                        <td><?= $p['total_clientes'] ?> clientes<br><small class="text-muted"><?= $p['total_licencas'] ?> licenças</small></td>
                         <td><?= $p['ativo'] ? '<span class="badge bg-success">Ativo</span>' : '<span class="badge bg-secondary">Inativo</span>' ?></td>
                         <td>
                             <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editModal<?= $p['id'] ?>">
@@ -119,63 +131,86 @@ include APP_PATH . '/includes/header.php';
 <!-- Modais de edicao -->
 <?php foreach ($planos as $p): ?>
 <div class="modal fade" id="editModal<?= $p['id'] ?>" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <form method="POST">
                 <?= csrfField() ?>
                 <input type="hidden" name="id" value="<?= $p['id'] ?>">
 
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="fas fa-edit me-2"></i>Editar Plano</h5>
+                    <h5 class="modal-title"><i class="fas fa-edit me-2"></i>Editar Plano: <?= e($p['nome']) ?></h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
 
                 <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label">Nome</label>
-                        <input type="text" name="nome" class="form-control" value="<?= e($p['nome']) ?>" required>
-                    </div>
-
                     <div class="row g-3">
                         <div class="col-md-6">
+                            <label class="form-label">Nome</label>
+                            <input type="text" name="nome" class="form-control" value="<?= e($p['nome']) ?>" required>
+                        </div>
+                        <div class="col-md-3">
                             <label class="form-label">Slug</label>
                             <input type="text" class="form-control" value="<?= e($p['slug']) ?>" disabled>
-                            <small class="text-muted">Nao editavel (usado na API)</small>
                         </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Periodo</label>
-                            <input type="text" class="form-control" value="<?= e(ucfirst($p['periodo'])) ?>" disabled>
+                        <div class="col-md-3">
+                            <label class="form-label">Tipo</label>
+                            <input type="text" class="form-control" value="<?= e(ucfirst($p['tipo_produto'])) ?>" disabled>
                         </div>
                     </div>
 
-                    <div class="row g-3 mt-1">
-                        <div class="col-md-4">
-                            <label class="form-label">Preco (R$)</label>
+                    <hr class="my-3">
+                    <h6 class="fw-bold"><i class="fas fa-dollar-sign me-1"></i>Preços por Período</h6>
+
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Preço base (R$)</label>
                             <input type="number" name="preco" class="form-control" value="<?= number_format((float)$p['preco'], 2, '.', '') ?>" step="0.01" min="0" required>
+                            <small class="text-muted">Referência</small>
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Limite NFC-e/mes</label>
+                        <div class="col-md-3">
+                            <label class="form-label">Mensal (R$)</label>
+                            <input type="number" name="preco_mensal" class="form-control" value="<?= $p['preco_mensal'] ? number_format((float)$p['preco_mensal'], 2, '.', '') : '' ?>" step="0.01" min="0" placeholder="0.00">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Trimestral (R$)</label>
+                            <input type="number" name="preco_trimestral" class="form-control" value="<?= $p['preco_trimestral'] ? number_format((float)$p['preco_trimestral'], 2, '.', '') : '' ?>" step="0.01" min="0" placeholder="0.00">
+                            <small class="text-muted">Valor/mês</small>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Semestral (R$)</label>
+                            <input type="number" name="preco_semestral" class="form-control" value="<?= $p['preco_semestral'] ? number_format((float)$p['preco_semestral'], 2, '.', '') : '' ?>" step="0.01" min="0" placeholder="0.00">
+                            <small class="text-muted">Valor/mês</small>
+                        </div>
+                    </div>
+                    <div class="row g-3 mt-1">
+                        <div class="col-md-3">
+                            <label class="form-label">Anual (R$)</label>
+                            <input type="number" name="preco_anual" class="form-control" value="<?= $p['preco_anual'] ? number_format((float)$p['preco_anual'], 2, '.', '') : '' ?>" step="0.01" min="0" placeholder="0.00">
+                            <small class="text-muted">Valor/mês</small>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Limite NFC-e/mês</label>
                             <input type="number" name="limite_nfce" class="form-control" value="<?= (int)$p['limite_nfce'] ?>" min="0">
                             <small class="text-muted">0 = ilimitado</small>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <label class="form-label">Terminais</label>
                             <input type="number" name="limite_terminais" class="form-control" value="<?= (int)$p['limite_terminais'] ?>" min="0">
                             <small class="text-muted">0 = ilimitado</small>
                         </div>
                     </div>
 
-                    <div class="mb-3 mt-3">
+                    <hr class="my-3">
+
+                    <div class="mb-3">
                         <label class="form-label">Recursos (JSON)</label>
                         <textarea name="recursos" class="form-control" rows="4" placeholder='{"descricao": "...", "beneficios": ["..."]}'><?= e($p['recursos'] ?? '') ?></textarea>
-                        <small class="text-muted">JSON com descrição, benefícios e destaque. Ex: {"descricao": "Para pequenos negócios", "destaque": true, "beneficios": ["Item 1", "Item 2"]}</small>
+                        <small class="text-muted">Ex: {"descricao": "Para pequenos negócios", "destaque": true, "beneficios": ["Item 1", "Item 2"]}</small>
                     </div>
 
-                    <div class="mt-3">
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" name="ativo" value="1" id="ativo<?= $p['id'] ?>" <?= $p['ativo'] ? 'checked' : '' ?>>
-                            <label class="form-check-label" for="ativo<?= $p['id'] ?>">Plano ativo (visível para clientes)</label>
-                        </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="ativo" value="1" id="ativo<?= $p['id'] ?>" <?= $p['ativo'] ? 'checked' : '' ?>>
+                        <label class="form-check-label" for="ativo<?= $p['id'] ?>">Plano ativo (visível para clientes)</label>
                     </div>
                 </div>
 
@@ -191,7 +226,7 @@ include APP_PATH . '/includes/header.php';
 
 <!-- Modal Criar Plano -->
 <div class="modal fade" id="criarModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <form method="POST">
                 <?= csrfField() ?>
@@ -203,18 +238,17 @@ include APP_PATH . '/includes/header.php';
                 </div>
 
                 <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label">Nome</label>
-                        <input type="text" name="nome" class="form-control" placeholder="Ex: SaaS Free Trial" required>
-                    </div>
-
                     <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label">Slug</label>
-                            <input type="text" name="slug" class="form-control" placeholder="Ex: saas-free">
-                            <small class="text-muted">Deixe vazio para gerar automaticamente</small>
+                        <div class="col-md-4">
+                            <label class="form-label">Nome</label>
+                            <input type="text" name="nome" class="form-control" placeholder="Ex: Desktop Pro" required>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
+                            <label class="form-label">Slug</label>
+                            <input type="text" name="slug" class="form-control" placeholder="Ex: desktop-pro">
+                            <small class="text-muted">Vazio = auto</small>
+                        </div>
+                        <div class="col-md-4">
                             <label class="form-label">Tipo de Produto</label>
                             <select name="tipo_produto" class="form-select">
                                 <option value="desktop">Desktop</option>
@@ -223,38 +257,53 @@ include APP_PATH . '/includes/header.php';
                         </div>
                     </div>
 
-                    <div class="row g-3 mt-1">
-                        <div class="col-md-6">
-                            <label class="form-label">Período</label>
-                            <select name="periodo" class="form-select">
-                                <option value="mensal">Mensal</option>
-                                <option value="trimestral">Trimestral</option>
-                                <option value="anual">Anual</option>
-                            </select>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Preço (R$)</label>
+                    <hr class="my-3">
+                    <h6 class="fw-bold"><i class="fas fa-dollar-sign me-1"></i>Preços por Período</h6>
+
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Preço base (R$)</label>
                             <input type="number" name="preco" class="form-control" value="0.00" step="0.01" min="0" required>
                         </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Mensal (R$)</label>
+                            <input type="number" name="preco_mensal" class="form-control" step="0.01" min="0" placeholder="0.00">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Trimestral (R$)</label>
+                            <input type="number" name="preco_trimestral" class="form-control" step="0.01" min="0" placeholder="0.00">
+                            <small class="text-muted">Valor/mês</small>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Semestral (R$)</label>
+                            <input type="number" name="preco_semestral" class="form-control" step="0.01" min="0" placeholder="0.00">
+                            <small class="text-muted">Valor/mês</small>
+                        </div>
                     </div>
-
                     <div class="row g-3 mt-1">
-                        <div class="col-md-6">
+                        <div class="col-md-3">
+                            <label class="form-label">Anual (R$)</label>
+                            <input type="number" name="preco_anual" class="form-control" step="0.01" min="0" placeholder="0.00">
+                            <small class="text-muted">Valor/mês</small>
+                        </div>
+                        <div class="col-md-3">
                             <label class="form-label">Limite NFC-e/mês</label>
                             <input type="number" name="limite_nfce" class="form-control" value="0" min="0">
                             <small class="text-muted">0 = ilimitado</small>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-3">
                             <label class="form-label">Terminais</label>
                             <input type="number" name="limite_terminais" class="form-control" value="1" min="0">
                             <small class="text-muted">0 = ilimitado</small>
                         </div>
                     </div>
 
-                    <div class="mb-3 mt-3">
+                    <hr class="my-3">
+
+                    <div class="mb-3">
                         <label class="form-label">Recursos (JSON)</label>
-                        <textarea name="recursos" class="form-control" rows="3" placeholder='{"trial_dias": 15}'></textarea>
-                        <small class="text-muted">Opcional. JSON com recursos extras do plano</small>
+                        <textarea name="recursos" class="form-control" rows="3" placeholder='{"descricao": "...", "beneficios": ["..."]}'></textarea>
+                        <small class="text-muted">Ex: {"descricao": "Para pequenos negócios", "destaque": true, "beneficios": ["Item 1", "Item 2"]}</small>
                     </div>
 
                     <div class="form-check form-switch">

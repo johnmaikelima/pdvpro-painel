@@ -423,14 +423,14 @@ function handlePlanos(PDO $pdo): void {
     $incluirFree = ($_GET['incluir_free'] ?? '0') === '1';
 
     // Planos pagos ativos
-    $stmt = $pdo->prepare("SELECT id, nome, slug, tipo_produto, periodo, preco, limite_nfce, limite_terminais, recursos FROM planos WHERE tipo_produto = ? AND ativo = 1 AND preco > 0 ORDER BY preco ASC");
+    $stmt = $pdo->prepare("SELECT id, nome, slug, tipo_produto, periodo, preco, preco_mensal, preco_trimestral, preco_semestral, preco_anual, limite_nfce, limite_terminais, recursos FROM planos WHERE tipo_produto = ? AND ativo = 1 AND preco > 0 ORDER BY preco ASC");
     $stmt->execute([$tipo]);
     $planos = $stmt->fetchAll();
 
     // Se solicitado, incluir plano Free (busca pelo slug, independente de ativo)
     $planoFree = null;
     if ($incluirFree) {
-        $stmtFree = $pdo->prepare("SELECT id, nome, slug, tipo_produto, periodo, preco, limite_nfce, limite_terminais, recursos FROM planos WHERE slug = ? LIMIT 1");
+        $stmtFree = $pdo->prepare("SELECT id, nome, slug, tipo_produto, periodo, preco, preco_mensal, preco_trimestral, preco_semestral, preco_anual, limite_nfce, limite_terminais, recursos FROM planos WHERE slug = ? LIMIT 1");
         $stmtFree->execute([$tipo . '-free']);
         $planoFree = $stmtFree->fetch();
         if ($planoFree) {
@@ -441,6 +441,10 @@ function handlePlanos(PDO $pdo): void {
     foreach ($planos as &$p) {
         $p['recursos'] = json_decode($p['recursos'], true) ?: [];
         $p['preco'] = (float)$p['preco'];
+        $p['preco_mensal'] = $p['preco_mensal'] ? (float)$p['preco_mensal'] : null;
+        $p['preco_trimestral'] = $p['preco_trimestral'] ? (float)$p['preco_trimestral'] : null;
+        $p['preco_semestral'] = $p['preco_semestral'] ? (float)$p['preco_semestral'] : null;
+        $p['preco_anual'] = $p['preco_anual'] ? (float)$p['preco_anual'] : null;
         $p['limite_nfce'] = (int)$p['limite_nfce'];
     }
 
