@@ -14,6 +14,57 @@ if (!$cliente) {
 
 $pageTitle = $cliente['nome_fantasia'] ?: $cliente['razao_social'];
 
+// Alterar senha do SaaS
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'alterar_senha_saas') {
+    if (!verifyCsrf()) {
+        flash('danger', 'Token CSRF inválido.');
+        redirect("view.php?id={$id}");
+    }
+
+    $novaSenha = $_POST['nova_senha'] ?? '';
+    if (strlen($novaSenha) < 8) {
+        flash('danger', 'Senha deve ter no mínimo 8 caracteres.');
+        redirect("view.php?id={$id}");
+    }
+
+    // Buscar licença SaaS do cliente
+    $stmtLic = $pdo->prepare("SELECT chave FROM licencas WHERE cliente_id = ? AND chave LIKE 'S%' ORDER BY id DESC LIMIT 1");
+    $stmtLic->execute([$id]);
+    $licenca = $stmtLic->fetch();
+
+    if (!$licenca || empty(SAAS_URL)) {
+        flash('danger', 'Não foi possível alterar a senha. Licença SaaS não encontrada ou SAAS_URL não configurada.');
+        redirect("view.php?id={$id}");
+    }
+
+    $url = rtrim(SAAS_URL, '/') . '/api/alterar-senha.php';
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => json_encode([
+            'licenca_chave' => $licenca['chave'],
+            'nova_senha' => $novaSenha,
+        ]),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 10,
+        CURLOPT_HTTPHEADER => [
+            'Content-Type: application/json',
+            'X-Api-Secret: ' . API_SECRET,
+        ],
+    ]);
+    $resp = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($httpCode === 200) {
+        flash('success', 'Senha do SaaS alterada com sucesso!');
+    } else {
+        $data = json_decode($resp, true);
+        flash('danger', 'Erro ao alterar senha: ' . ($data['msg'] ?? 'HTTP ' . $httpCode));
+    }
+    redirect("view.php?id={$id}");
+}
+
 // Excluir cliente
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'excluir') {
     if (!verifyCsrf()) {
@@ -115,7 +166,7 @@ include APP_PATH . '/includes/header.php';
             <div class="stat-label">Total Pago</div>
             <div class="stat-value" style="font-size:1.2rem;"><?= formatMoney($totalPago) ?></div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card mb-3">
             <div class="stat-label">API Token</div>
             <div class="d-flex align-items-center gap-2 mt-1">
                 <code class="small" id="tokenDisplay"><?= e(substr($cliente['api_token'] ?? '', 0, 16)) ?>...</code>
@@ -123,6 +174,54 @@ include APP_PATH . '/includes/header.php';
                     <i class="fas fa-copy"></i>
                 </button>
             </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Acesso SaaS</div>
+            <div class="mt-1">
+                <?php if (!empty($cliente['login_saas'])): ?>
+                    <div class="mb-2">
+                        <small class="text-muted">Login:</small>
+                        <strong><?= e($cliente['login_saas']) ?></strong>
+                    </div>
+                <?php else: ?>
+                    <div class="mb-2 text-muted small">Login não registrado</div>
+                <?php endif; ?>
+                <button class="btn btn-sm btn-outline-warning w-100" data-bs-toggle="modal" data-bs-target="#modalAlterarSenha">
+                    <i class="fas fa-key me-1"></i>Alterar Senha
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Alterar Senha SaaS -->
+<div class="modal fade" id="modalAlterarSenha" tabindex="-1">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+            <form method="POST">
+                <?= csrfField() ?>
+                <input type="hidden" name="acao" value="alterar_senha_saas">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-key me-2"></i>Alterar Senha SaaS</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <?php if (!empty($cliente['login_saas'])): ?>
+                        <div class="mb-3">
+                            <label class="form-label">Login</label>
+                            <input type="text" class="form-control" value="<?= e($cliente['login_saas']) ?>" readonly>
+                        </div>
+                    <?php endif; ?>
+                    <div class="mb-3">
+                        <label class="form-label">Nova Senha</label>
+                        <input type="password" name="nova_senha" class="form-control" required minlength="8" placeholder="Minimo 8 caracteres">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-warning"><i class="fas fa-save me-1"></i>Alterar</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>

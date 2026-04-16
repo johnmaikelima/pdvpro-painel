@@ -1010,6 +1010,7 @@ function handleRegistrarSaas(PDO $pdo): void {
     $contatoNome = trim($input['contato_nome'] ?? '') ?: null;
     $cidade = trim($input['cidade'] ?? '') ?: null;
     $uf = trim($input['uf'] ?? '') ?: null;
+    $loginSaas = trim($input['login_saas'] ?? '') ?: null;
     $planoSlug = trim($input['plano_slug'] ?? 'saas-free');
 
     // Validacoes
@@ -1074,9 +1075,9 @@ function handleRegistrarSaas(PDO $pdo): void {
         $pdo->beginTransaction();
 
         // Criar cliente
-        $stmt = $pdo->prepare("INSERT INTO clientes (razao_social, nome_fantasia, cnpj, cpf, email, telefone, whatsapp, contato_nome, cidade, uf, plano_id, status, api_token) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
+        $stmt = $pdo->prepare("INSERT INTO clientes (razao_social, nome_fantasia, cnpj, cpf, email, telefone, whatsapp, contato_nome, cidade, uf, plano_id, status, api_token, login_saas) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
         $status = 'trial'; // Todos comecam em trial
-        $stmt->execute([$razaoSocial, $nomeFantasia, $cnpj, $cpf, $email, $telefone, $whatsapp, $contatoNome, $cidade, $uf, $planoId, $status, $apiToken]);
+        $stmt->execute([$razaoSocial, $nomeFantasia, $cnpj, $cpf, $email, $telefone, $whatsapp, $contatoNome, $cidade, $uf, $planoId, $status, $apiToken, $loginSaas]);
         $clienteId = (int)$pdo->lastInsertId();
 
         // Criar licenca SaaS
