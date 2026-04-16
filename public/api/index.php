@@ -141,6 +141,17 @@ function handleRegistrar(PDO $pdo): void {
 
         logApi($pdo, null, $clienteId, 'registrar', ['cnpj' => $cnpj, 'email' => $email, 'chave' => $chave]);
 
+        // Email de boas-vindas
+        if ($email) {
+            try {
+                $nomeCliente = e($nomeFantasia ?: $razaoSocial);
+                sendMail($pdo, $email, 'Bem-vindo ao Kaixa!', emailBoasVindasDesktop($nomeCliente, $chave));
+                logApi($pdo, null, $clienteId, 'email_boas_vindas', ['email' => $email]);
+            } catch (\Throwable $e) {
+                logApi($pdo, null, $clienteId, 'email_boas_vindas_erro', ['erro' => $e->getMessage()]);
+            }
+        }
+
         jsonResponse(201, [
             'ok' => true,
             'mensagem' => 'Cadastro realizado com sucesso! Seu PDV esta ativo.',
@@ -1103,6 +1114,20 @@ function handleRegistrarSaas(PDO $pdo): void {
             'plano' => $planoSlug,
         ]);
 
+        // Email de boas-vindas SaaS
+        if ($email) {
+            try {
+                $nomeCliente = e($nomeFantasia ?: $razaoSocial);
+                $planoNome = $plano ? e($plano['nome']) : 'Teste';
+                $login = e($loginSaas ?: '');
+                $saasUrl = SAAS_URL ? rtrim(SAAS_URL, '/') : '';
+                sendMail($pdo, $email, 'Bem-vindo ao Kaixa!', emailBoasVindasSaas($nomeCliente, $planoNome, $trialDias, $login, $saasUrl));
+                logApi($pdo, $licencaId, $clienteId, 'email_boas_vindas_saas', ['email' => $email]);
+            } catch (\Throwable $e) {
+                logApi($pdo, $licencaId, $clienteId, 'email_boas_vindas_saas_erro', ['erro' => $e->getMessage()]);
+            }
+        }
+
         $response = [
             'ok' => true,
             'mensagem' => 'Cliente SaaS registrado com sucesso.',
@@ -1201,4 +1226,121 @@ function handleValidarSaas(PDO $pdo): void {
         'dias_restantes' => $diasRestantes,
         'cliente' => $licenca['razao_social'],
     ]);
+}
+
+// ============================================
+//   Templates de email
+// ============================================
+
+function emailBoasVindasDesktop(string $nome, string $chave): string {
+    return <<<HTML
+<!DOCTYPE html>
+<html>
+<body style="font-family: 'Segoe UI', Arial, sans-serif; background: #f1f5f9; margin: 0; padding: 20px;">
+<div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
+
+    <div style="background: linear-gradient(135deg, #0f172a, #1e40af); padding: 30px; text-align: center;">
+        <h1 style="color: #fff; margin: 0; font-size: 24px;">Kaixa</h1>
+        <p style="color: #93c5fd; margin: 8px 0 0;">Bem-vindo!</p>
+    </div>
+
+    <div style="padding: 30px;">
+        <p style="color: #334155; font-size: 16px;">Ola, <strong>{$nome}</strong>!</p>
+
+        <p style="color: #334155;">Seu cadastro foi realizado com sucesso. Sua licenca gratuita ja esta ativa e pronta para uso.</p>
+
+        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 20px; margin: 20px 0; text-align: center;">
+            <p style="color: #166534; font-size: 14px; margin: 0 0 8px;">Sua chave de licenca:</p>
+            <p style="color: #166534; font-size: 28px; font-weight: 800; letter-spacing: 2px; margin: 0; font-family: monospace;">{$chave}</p>
+        </div>
+
+        <div style="background: #eff6ff; border-radius: 8px; padding: 16px; margin: 20px 0;">
+            <p style="color: #1e40af; font-size: 14px; font-weight: 600; margin: 0 0 8px;">Proximos passos:</p>
+            <ol style="color: #334155; font-size: 13px; margin: 0; padding-left: 20px;">
+                <li>Abra o Kaixa no seu computador</li>
+                <li>A ativacao sera feita automaticamente</li>
+                <li>Cadastre seus produtos e comece a vender!</li>
+            </ol>
+        </div>
+
+        <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">
+            Guarde esta chave em local seguro.<br>
+            Em caso de duvidas, entre em contato com o suporte.
+        </p>
+    </div>
+
+    <div style="background: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0;">
+        <p style="color: #94a3b8; font-size: 12px; margin: 0;">Kaixa - Sistema de Ponto de Venda</p>
+    </div>
+</div>
+</body>
+</html>
+HTML;
+}
+
+function emailBoasVindasSaas(string $nome, string $plano, int $trialDias, string $login, string $saasUrl): string {
+    $urlAcesso = $saasUrl ? "<a href=\"{$saasUrl}\" style=\"color: #1e40af; text-decoration: none; font-weight: 600;\">{$saasUrl}</a>" : 'o endereco fornecido pelo administrador';
+    $dataExpiracao = date('d/m/Y', strtotime("+{$trialDias} days"));
+
+    return <<<HTML
+<!DOCTYPE html>
+<html>
+<body style="font-family: 'Segoe UI', Arial, sans-serif; background: #f1f5f9; margin: 0; padding: 20px;">
+<div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
+
+    <div style="background: linear-gradient(135deg, #0f172a, #1e40af); padding: 30px; text-align: center;">
+        <h1 style="color: #fff; margin: 0; font-size: 24px;">Kaixa</h1>
+        <p style="color: #93c5fd; margin: 8px 0 0;">Bem-vindo ao Kaixa!</p>
+    </div>
+
+    <div style="padding: 30px;">
+        <p style="color: #334155; font-size: 16px;">Ola, <strong>{$nome}</strong>!</p>
+
+        <p style="color: #334155;">Seu cadastro foi realizado com sucesso! Voce tem <strong>{$trialDias} dias gratis</strong> para testar todas as funcionalidades do sistema.</p>
+
+        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 20px; margin: 20px 0;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <td style="padding: 6px 0; color: #64748b; font-size: 14px;">Plano:</td>
+                    <td style="padding: 6px 0; color: #166534; font-size: 14px; font-weight: 600; text-align: right;">{$plano}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 6px 0; color: #64748b; font-size: 14px;">Teste gratis ate:</td>
+                    <td style="padding: 6px 0; color: #166534; font-size: 14px; font-weight: 600; text-align: right;">{$dataExpiracao}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 6px 0; color: #64748b; font-size: 14px;">Seu login:</td>
+                    <td style="padding: 6px 0; color: #166534; font-size: 14px; font-weight: 600; text-align: right;">{$login}</td>
+                </tr>
+            </table>
+        </div>
+
+        <div style="background: #eff6ff; border-radius: 8px; padding: 16px; margin: 20px 0;">
+            <p style="color: #1e40af; font-size: 14px; font-weight: 600; margin: 0 0 8px;">Como acessar:</p>
+            <ol style="color: #334155; font-size: 13px; margin: 0; padding-left: 20px;">
+                <li>Acesse {$urlAcesso}</li>
+                <li>Entre com o login <strong>{$login}</strong> e a senha que voce definiu</li>
+                <li>Configure sua empresa, cadastre produtos e comece a vender!</li>
+            </ol>
+        </div>
+
+        <div style="background: #fefce8; border: 1px solid #fde68a; border-radius: 8px; padding: 16px; margin: 20px 0;">
+            <p style="color: #92400e; font-size: 13px; margin: 0;">
+                <strong>Dica:</strong> Para emitir NFC-e, acesse Configuracoes &gt; Fiscal e envie seu Certificado Digital A1. Voce pode testar em ambiente de homologacao antes de emitir notas reais.
+            </p>
+        </div>
+
+        <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">
+            Este email foi enviado porque voce se cadastrou no Kaixa.<br>
+            Em caso de duvidas, entre em contato com o suporte.
+        </p>
+    </div>
+
+    <div style="background: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0;">
+        <p style="color: #94a3b8; font-size: 12px; margin: 0;">Kaixa - Sistema de Ponto de Venda</p>
+    </div>
+</div>
+</body>
+</html>
+HTML;
 }
