@@ -56,6 +56,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 redirect('index.php');
             }
 
+            // Validar MIME type real do arquivo
+            $finfo = new finfo(FILEINFO_MIME_TYPE);
+            $mimeType = $finfo->file($file['tmp_name']);
+            $mimesPermitidos = [
+                'application/x-msdownload', 'application/x-msi', 'application/x-dosexec',
+                'application/zip', 'application/x-zip-compressed', 'application/octet-stream',
+            ];
+            if (!in_array($mimeType, $mimesPermitidos)) {
+                flash('danger', 'Tipo de arquivo invalido (MIME: ' . e($mimeType) . ').');
+                redirect('index.php');
+            }
+
             // Nome seguro: pdvpro-desktop-1.2.0.exe
             $arquivoNome = "kaixa-{$tipoProduto}-{$versao}.{$ext}";
             $destino = $uploadDir . $arquivoNome;

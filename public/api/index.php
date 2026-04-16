@@ -9,7 +9,15 @@ require_once APP_PATH . '/includes/functions.php';
 require_once APP_PATH . '/includes/mailer.php';
 
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
+// CORS: aceitar apenas origens conhecidas
+$allowedOrigins = array_filter(array_map('trim', explode(',', $_ENV['CORS_ORIGINS'] ?? '')));
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+if (in_array($origin, $allowedOrigins)) {
+    header('Access-Control-Allow-Origin: ' . $origin);
+} elseif (empty($allowedOrigins)) {
+    // Fallback local: aceitar qualquer origem apenas se CORS_ORIGINS não configurado
+    header('Access-Control-Allow-Origin: *');
+}
 header('Access-Control-Allow-Methods: POST, GET');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
@@ -705,18 +713,21 @@ function handleWebhookAsaas(PDO $pdo): void {
         jsonResponse(400, ['error' => 'Payload invalido']);
     }
 
-    // Validar webhook secret (opcional)
+    // Validar webhook secret (obrigatório)
     try {
         $secret = getConfig($pdo, 'asaas_webhook_secret');
-        if (!empty($secret)) {
-            $token = $_SERVER['HTTP_ASAAS_ACCESS_TOKEN'] ?? '';
-            if ($token !== $secret) {
-                logApi($pdo, null, null, 'webhook_asaas', ['erro' => 'Token invalido', 'event' => $data['event']]);
-                jsonResponse(401, ['error' => 'Token invalido']);
-            }
+        if (empty($secret)) {
+            logApi($pdo, null, null, 'webhook_asaas', ['erro' => 'Webhook secret nao configurado', 'event' => $data['event']]);
+            jsonResponse(500, ['error' => 'Webhook nao configurado']);
+        }
+        $token = $_SERVER['HTTP_ASAAS_ACCESS_TOKEN'] ?? '';
+        if (!hash_equals($secret, $token)) {
+            logApi($pdo, null, null, 'webhook_asaas', ['erro' => 'Token invalido', 'event' => $data['event']]);
+            jsonResponse(401, ['error' => 'Token invalido']);
         }
     } catch (\Throwable $e) {
-        // tabela configuracoes pode nao existir ainda, ignorar
+        logApi($pdo, null, null, 'webhook_asaas', ['erro' => 'Erro validacao: ' . $e->getMessage()]);
+        jsonResponse(500, ['error' => 'Erro interno']);
     }
 
     $event = $data['event'];

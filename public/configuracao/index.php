@@ -48,8 +48,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('index.php');
         }
 
-        if (strlen($novaSenha) < 6) {
-            flash('danger', 'Nova senha deve ter no minimo 6 caracteres.');
+        if (strlen($novaSenha) < 10) {
+            flash('danger', 'Nova senha deve ter no minimo 10 caracteres.');
             redirect('index.php');
         }
 

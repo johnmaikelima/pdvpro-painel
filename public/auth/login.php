@@ -22,23 +22,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         ]);
 
-        $stmt = $pdo->prepare("SELECT * FROM admins WHERE email = ? AND ativo = 1 LIMIT 1");
-        $stmt->execute([$email]);
-        $admin = $stmt->fetch();
+        // Rate limiting: max 5 tentativas por IP a cada 15 minutos
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        $loginKey = 'login_attempts_' . md5($ip);
+        $attempts = $_SESSION[$loginKey] ?? ['count' => 0, 'first' => time()];
 
-        if ($admin && password_verify($senha, $admin['senha'])) {
-            $_SESSION['admin_id'] = $admin['id'];
-            $_SESSION['admin_user'] = [
-                'id' => $admin['id'],
-                'nome' => $admin['nome'],
-                'email' => $admin['email'],
-            ];
-
-            $pdo->prepare("UPDATE admins SET ultimo_acesso = NOW() WHERE id = ?")->execute([$admin['id']]);
-
-            redirect('/dashboard/');
+        if ($attempts['count'] >= 5 && (time() - $attempts['first']) < 900) {
+            $restante = ceil((900 - (time() - $attempts['first'])) / 60);
+            $erro = "Muitas tentativas. Aguarde {$restante} minutos.";
         } else {
-            $erro = 'Email ou senha incorretos.';
+            // Resetar contador se passou 15min
+            if ((time() - $attempts['first']) >= 900) {
+                $attempts = ['count' => 0, 'first' => time()];
+            }
+
+            $stmt = $pdo->prepare("SELECT * FROM admins WHERE email = ? AND ativo = 1 LIMIT 1");
+            $stmt->execute([$email]);
+            $admin = $stmt->fetch();
+
+            if ($admin && password_verify($senha, $admin['senha'])) {
+                // Login OK: resetar tentativas
+                unset($_SESSION[$loginKey]);
+                session_regenerate_id(true);
+
+                $_SESSION['admin_id'] = $admin['id'];
+                $_SESSION['admin_user'] = [
+                    'id' => $admin['id'],
+                    'nome' => $admin['nome'],
+                    'email' => $admin['email'],
+                ];
+
+                $pdo->prepare("UPDATE admins SET ultimo_acesso = NOW() WHERE id = ?")->execute([$admin['id']]);
+
+                redirect('/dashboard/');
+            } else {
+                $attempts['count']++;
+                $_SESSION[$loginKey] = $attempts;
+                $erro = 'Email ou senha incorretos.';
+            }
         }
     }
 }

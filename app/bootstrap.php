@@ -7,7 +7,11 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/mailer.php';
 
-// Sessao
+// Sessao segura
+ini_set('session.cookie_httponly', '1');
+ini_set('session.cookie_secure', isset($_SERVER['HTTPS']) ? '1' : '0');
+ini_set('session.cookie_samesite', 'Strict');
+ini_set('session.use_only_cookies', '1');
 session_start();
 
 // Conexao MySQL
@@ -22,7 +26,6 @@ try {
         PDO::ATTR_EMULATE_PREPARES => false,
     ]);
 } catch (PDOException $e) {
-    die('Erro ao conectar no banco de dados: ' . $e->getMessage() .
-        '<br><br>Verifique se o MySQL esta rodando e se o banco "' . DB_NAME . '" foi criado.' .
-        '<br>Execute: <code>php app/migrate.php</code> para criar o banco.');
+    error_log('DB Connection Error: ' . $e->getMessage());
+    die('Erro ao conectar no banco de dados. Verifique as configuracoes do servidor.');
 }

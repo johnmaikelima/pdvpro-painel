@@ -158,8 +158,8 @@ function paginate(PDO $pdo, string $query, array $params, int $page, int $perPag
     $page = max(1, min($page, $totalPages));
     $offset = ($page - 1) * $perPage;
 
-    $stmt = $pdo->prepare($query . " LIMIT {$perPage} OFFSET {$offset}");
-    $stmt->execute($params);
+    $stmt = $pdo->prepare($query . " LIMIT ? OFFSET ?");
+    $stmt->execute(array_merge($params, [$perPage, $offset]));
     $items = $stmt->fetchAll();
 
     return [

@@ -1,13 +1,21 @@
 <?php
 // Endpoint temporario para rodar migrations no servidor
-// REMOVER DEPOIS DE USAR
+require_once dirname(__DIR__) . '/app/config.php';
+
+// Bloquear se já foi executado
+$lockFile = dirname(__DIR__) . '/storage/.setup_complete';
+if (file_exists($lockFile)) {
+    http_response_code(403);
+    die('Setup ja executado. Remova storage/.setup_complete para executar novamente.');
+}
+
+// Validar chave via variável de ambiente
 $secret = $_GET['key'] ?? '';
-if ($secret !== 'pdvpro2026setup') {
+$setupKey = $_ENV['SETUP_KEY'] ?? '';
+if (empty($setupKey) || empty($secret) || !hash_equals($setupKey, $secret)) {
     http_response_code(403);
     die('Acesso negado');
 }
-
-require_once dirname(__DIR__) . '/app/config.php';
 
 echo "<pre>";
 echo "Kaixa Admin - Setup Remoto\n";
@@ -66,5 +74,8 @@ echo "\n{$novas} migration(s) executada(s).\n";
 
 $tables = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
 echo "\nTabelas: " . implode(', ', $tables) . "\n";
-echo "\nPRONTO! Agora delete este arquivo (setup.php) por seguranca.\n";
+// Criar lockfile para impedir re-execução
+@file_put_contents($lockFile, date('Y-m-d H:i:s'));
+
+echo "\nPRONTO! Setup concluido. Este endpoint esta agora bloqueado.\n";
 echo "</pre>";

@@ -24,7 +24,9 @@ $receitaMes = (float)$receitaMes->fetchColumn();
 $receitaTotal = $pdo->query("SELECT COALESCE(SUM(valor), 0) FROM pagamentos WHERE status = 'pago'")->fetchColumn();
 
 // NFC-e emitidas no mes
-$nfceMes = $pdo->query("SELECT COALESCE(SUM(nfce_emitidas_mes), 0) FROM licencas WHERE nfce_mes_referencia = '{$mesAtual}'")->fetchColumn();
+$stmtNfce = $pdo->prepare("SELECT COALESCE(SUM(nfce_emitidas_mes), 0) FROM licencas WHERE nfce_mes_referencia = ?");
+$stmtNfce->execute([$mesAtual]);
+$nfceMes = $stmtNfce->fetchColumn();
 
 // Ultimos clientes
 $ultimosClientes = $pdo->query("
