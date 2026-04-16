@@ -112,6 +112,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    if ($acao === 'limpar_cache') {
+        if (empty(SAAS_URL)) {
+            flash('danger', 'SAAS_URL nao configurada. Adicione a variavel de ambiente.');
+        } else {
+            $url = rtrim(SAAS_URL, '/') . '/api/limpar-cache.php';
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 10,
+                CURLOPT_HTTPHEADER => ['X-Api-Secret: ' . API_SECRET],
+            ]);
+            $resp = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode === 200) {
+                $data = json_decode($resp, true);
+                $arquivos = implode(', ', $data['arquivos'] ?? []);
+                flash('success', 'Cache limpo com sucesso! Arquivos removidos: ' . ($arquivos ?: 'nenhum'));
+            } else {
+                flash('danger', 'Erro ao limpar cache. HTTP ' . $httpCode);
+            }
+        }
+    }
+
     if ($acao === 'testar_asaas') {
         try {
             require_once APP_PATH . '/includes/asaas.php';
@@ -150,6 +175,9 @@ include APP_PATH . '/includes/header.php';
     </li>
     <li class="nav-item">
         <a class="nav-link" data-bs-toggle="tab" href="#tab-api"><i class="fas fa-plug me-1"></i>API</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#tab-sistema"><i class="fas fa-server me-1"></i>Sistema</a>
     </li>
 </ul>
 
@@ -372,6 +400,55 @@ include APP_PATH . '/includes/header.php';
                         <a href="https://www.asaas.com" target="_blank" class="btn btn-sm btn-outline-primary w-100 mt-2">
                             <i class="fas fa-external-link-alt me-1"></i>Acessar Asaas
                         </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB SISTEMA -->
+    <div class="tab-pane fade" id="tab-sistema">
+        <div class="row g-4">
+            <div class="col-md-6">
+                <div class="table-card">
+                    <div class="card-header"><h5><i class="fas fa-broom me-2"></i>Cache</h5></div>
+                    <div class="p-4">
+                        <p class="text-muted">Os planos exibidos nas landing pages (SaaS e Desktop) ficam em cache por 10 minutos. Use o botao abaixo para forcar a atualizacao imediata apos editar planos.</p>
+                        <form method="POST">
+                            <?= csrfField() ?>
+                            <input type="hidden" name="acao" value="limpar_cache">
+                            <button type="submit" class="btn btn-warning">
+                                <i class="fas fa-trash-alt me-1"></i>Limpar Cache das Landing Pages
+                            </button>
+                        </form>
+                        <?php if (empty(SAAS_URL)): ?>
+                            <div class="alert alert-warning mt-3 mb-0 small">
+                                <i class="fas fa-exclamation-triangle me-1"></i>
+                                Configure a variavel <code>SAAS_URL</code> no Coolify para habilitar esta funcao.
+                                <br>Exemplo: <code>https://app.kaixa.com.br</code>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="table-card">
+                    <div class="card-header"><h5><i class="fas fa-info-circle me-2"></i>Variaveis de Ambiente</h5></div>
+                    <div class="p-4">
+                        <table class="table table-sm small mb-0">
+                            <tr>
+                                <td class="fw-bold">API_SECRET</td>
+                                <td><?= !empty(API_SECRET) ? '<span class="text-success"><i class="fas fa-check-circle"></i> Configurado</span>' : '<span class="text-danger"><i class="fas fa-times-circle"></i> Nao configurado</span>' ?></td>
+                            </tr>
+                            <tr>
+                                <td class="fw-bold">SAAS_URL</td>
+                                <td><?= !empty(SAAS_URL) ? '<span class="text-success"><i class="fas fa-check-circle"></i> ' . e(SAAS_URL) . '</span>' : '<span class="text-danger"><i class="fas fa-times-circle"></i> Nao configurado</span>' ?></td>
+                            </tr>
+                            <tr>
+                                <td class="fw-bold">CORS_ORIGINS</td>
+                                <td><?= !empty($_ENV['CORS_ORIGINS'] ?? '') ? '<span class="text-success"><i class="fas fa-check-circle"></i> Configurado</span>' : '<span class="text-muted"><i class="fas fa-minus-circle"></i> Usando * (padrao)</span>' ?></td>
+                            </tr>
+                        </table>
                     </div>
                 </div>
             </div>

@@ -27,6 +27,9 @@ define('CSRF_TOKEN_NAME', '_token');
 // API
 define('API_SECRET', $_ENV['API_SECRET'] ?? '');
 
+// URL do SaaS (para limpar cache, etc)
+define('SAAS_URL', $_ENV['SAAS_URL'] ?? '');
+
 // Licenca - defaults
 define('TRIAL_DAYS', 15);
 define('FREE_NFCE_LIMIT', 50);
