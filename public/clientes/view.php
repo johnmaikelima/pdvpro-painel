@@ -65,6 +65,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'alterar
     redirect("view.php?id={$id}");
 }
 
+// Acessar SaaS do cliente (impersonate)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'acessar_saas') {
+    if (!verifyCsrf()) {
+        flash('danger', 'Token CSRF inválido.');
+        redirect("view.php?id={$id}");
+    }
+
+    // Buscar licença SaaS do cliente
+    $stmtLic = $pdo->prepare("SELECT chave FROM licencas WHERE cliente_id = ? AND chave LIKE 'S%' AND status = 'ativa' ORDER BY id DESC LIMIT 1");
+    $stmtLic->execute([$id]);
+    $licenca = $stmtLic->fetch();
+
+    if (!$licenca || empty(SAAS_URL)) {
+        flash('danger', 'Licença SaaS não encontrada ou SAAS_URL não configurada.');
+        redirect("view.php?id={$id}");
+    }
+
+    $url = rtrim(SAAS_URL, '/') . '/api/impersonate.php';
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => json_encode([
+            'api_secret' => API_SECRET,
+            'licenca_chave' => $licenca['chave'],
+        ]),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 10,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+    ]);
+    $resp = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    $data = json_decode($resp, true);
+    if ($httpCode === 200 && !empty($data['ok']) && !empty($data['url'])) {
+        header('Location: ' . $data['url']);
+        exit;
+    } else {
+        flash('danger', 'Erro ao acessar SaaS: ' . ($data['mensagem'] ?? 'HTTP ' . $httpCode));
+        redirect("view.php?id={$id}");
+    }
+}
+
 // Excluir cliente
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'excluir') {
     if (!verifyCsrf()) {
@@ -109,7 +152,12 @@ include APP_PATH . '/includes/header.php';
 <div class="page-header">
     <h2><i class="fas fa-building me-2"></i><?= e($pageTitle) ?></h2>
     <div>
-        <a href="form.php?id=<?= $id ?>" class="btn btn-outline-primary"><i class="fas fa-edit me-1"></i>Editar</a>
+        <form method="POST" class="d-inline" target="_blank">
+            <?= csrfField() ?>
+            <input type="hidden" name="acao" value="acessar_saas">
+            <button type="submit" class="btn btn-outline-success" title="Abrir o SaaS deste cliente em nova aba"><i class="fas fa-external-link-alt me-1"></i>Acessar SaaS</button>
+        </form>
+        <a href="form.php?id=<?= $id ?>" class="btn btn-outline-primary ms-1"><i class="fas fa-edit me-1"></i>Editar</a>
         <form method="POST" class="d-inline ms-1" onsubmit="return confirm('Tem certeza que deseja excluir este cliente? Todas as licenças e pagamentos serão removidos.')">
             <?= csrfField() ?>
             <input type="hidden" name="acao" value="excluir">
