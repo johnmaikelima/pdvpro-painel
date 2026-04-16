@@ -52,6 +52,7 @@ match($action) {
     'upgrade' => handleUpgrade($pdo),
     'verificar_upgrade' => handleVerificarUpgrade($pdo),
     'status_pagamento' => handleStatusPagamento($pdo),
+    'reenviar_boas_vindas' => handleReenviarBoasVindas($pdo),
     'status' => jsonResponse(200, ['status' => 'online', 'version' => APP_VERSION]),
     default => jsonResponse(404, ['error' => 'Endpoint nao encontrado']),
 };
@@ -1343,4 +1344,31 @@ function emailBoasVindasSaas(string $nome, string $plano, int $trialDias, string
 </body>
 </html>
 HTML;
+}
+
+function handleReenviarBoasVindas(PDO $pdo): void {
+    $input = getInput();
+
+    $secret = $input['api_secret'] ?? ($_SERVER['HTTP_X_API_SECRET'] ?? '');
+    if (empty($secret) || !hash_equals(API_SECRET, $secret)) {
+        jsonResponse(403, ['ok' => false, 'mensagem' => 'Acesso nao autorizado.']);
+    }
+
+    $email = trim($input['email'] ?? '');
+    if (empty($email)) {
+        jsonResponse(400, ['ok' => false, 'mensagem' => 'Email obrigatorio.']);
+    }
+
+    $nome = trim($input['nome'] ?? '');
+    $login = trim($input['login'] ?? '');
+    $plano = trim($input['plano'] ?? 'Starter');
+    $trialDias = (int)($input['trial_dias'] ?? 15);
+    $saasUrl = SAAS_URL ? rtrim(SAAS_URL, '/') : '';
+
+    try {
+        sendMail($pdo, $email, 'Bem-vindo ao Kaixa!', emailBoasVindasSaas($nome, $plano, $trialDias, $login, $saasUrl));
+        jsonResponse(200, ['ok' => true, 'mensagem' => 'Email reenviado com sucesso.']);
+    } catch (\Throwable $e) {
+        jsonResponse(500, ['ok' => false, 'mensagem' => 'Erro ao enviar email: ' . $e->getMessage()]);
+    }
 }
