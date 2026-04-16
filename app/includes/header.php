@@ -19,7 +19,7 @@ $currentPage = basename(dirname($_SERVER['PHP_SELF']));
     <!-- Sidebar -->
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
-            <h5><i class="fas fa-cash-register me-2"></i>PDV Pro</h5>
+            <h5><i class="fas fa-cash-register me-2"></i>Kaixa</h5>
             <small class="text-muted">Painel Admin</small>
         </div>
 

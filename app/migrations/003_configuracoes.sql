@@ -9,7 +9,7 @@ INSERT IGNORE INTO configuracoes (chave, valor) VALUES
 ('smtp_port', '587'),
 ('smtp_user', ''),
 ('smtp_pass', ''),
-('smtp_from_name', 'PDV Pro'),
+('smtp_from_name', 'Kaixa'),
 ('smtp_from_email', ''),
 ('smtp_encryption', 'tls'),
 ('asaas_ambiente', 'sandbox'),

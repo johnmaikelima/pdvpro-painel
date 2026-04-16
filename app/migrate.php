@@ -1,11 +1,11 @@
 <?php
 // ============================================
-//   PDV Pro - Painel Admin - Migration Runner
+//   Kaixa - Painel Admin - Migration Runner
 // ============================================
 
 require_once __DIR__ . '/config.php';
 
-echo "PDV Pro Admin - Migration Runner\n";
+echo "Kaixa Admin - Migration Runner\n";
 echo "================================\n\n";
 
 // Conectar sem selecionar banco (para criar se necessario)

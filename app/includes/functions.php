@@ -1,6 +1,6 @@
 <?php
 // ============================================
-//   PDV Pro - Painel Admin - Funcoes Helper
+//   Kaixa - Painel Admin - Funcoes Helper
 // ============================================
 
 function redirect(string $url): void {

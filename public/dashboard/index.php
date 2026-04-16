@@ -164,7 +164,7 @@ include APP_PATH . '/includes/header.php';
                         <td><?= e($v['whatsapp'] ?? '-') ?></td>
                         <td>
                             <?php if ($v['whatsapp']): ?>
-                                <?php $msg = urlencode("Ola! Sua licenca do PDV Pro vence em " . formatDate($v['data_vencimento']) . ". Deseja renovar?"); ?>
+                                <?php $msg = urlencode("Ola! Sua licenca do Kaixa vence em " . formatDate($v['data_vencimento']) . ". Deseja renovar?"); ?>
                                 <a href="https://wa.me/55<?= preg_replace('/\D/', '', $v['whatsapp']) ?>?text=<?= $msg ?>"
                                    target="_blank" class="btn btn-sm btn-success">
                                     <i class="fab fa-whatsapp"></i>

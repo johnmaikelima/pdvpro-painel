@@ -1,6 +1,6 @@
 <?php
 // ============================================
-//   PDV Pro - Painel Admin - Bootstrap
+//   Kaixa - Painel Admin - Bootstrap
 // ============================================
 
 require_once __DIR__ . '/config.php';

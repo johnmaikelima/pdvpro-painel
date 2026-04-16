@@ -1,5 +1,5 @@
 -- ============================================
---   PDV Pro - Painel Admin - Dados Iniciais
+--   Kaixa - Painel Admin - Dados Iniciais
 -- ============================================
 
 -- Admin padrao (senha: admin123)

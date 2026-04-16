@@ -1,6 +1,6 @@
 <?php
 // ============================================
-//   PDV Pro - API REST de Licenciamento
+//   Kaixa - API REST de Licenciamento
 //   Endpoints para o PDV Desktop se comunicar
 // ============================================
 
@@ -530,7 +530,7 @@ function handleUpgrade(PDO $pdo): void {
         $novaLicId = (int)$pdo->lastInsertId();
 
         // Criar assinatura recorrente no Asaas
-        $descricao = "PDV Pro - {$plano['nome']}";
+        $descricao = "Kaixa - {$plano['nome']}";
         $vencimento = date('Y-m-d', strtotime('+3 days'));
 
         $subscription = $asaas->createSubscription([
@@ -901,7 +901,7 @@ function enviarEmailLicenca(PDO $pdo, array $pagamento): void {
 
         $valor = number_format((float)($pagamento['valor'] ?? 0), 2, ',', '.');
 
-        $subject = 'PDV Pro - Licenca Ativada com Sucesso!';
+        $subject = 'Kaixa - Licenca Ativada com Sucesso!';
         $body = <<<HTML
 <!DOCTYPE html>
 <html>
@@ -910,7 +910,7 @@ function enviarEmailLicenca(PDO $pdo, array $pagamento): void {
 <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
 
     <div style="background: linear-gradient(135deg, #0f172a, #1e40af); padding: 30px; text-align: center;">
-        <h1 style="color: #fff; margin: 0; font-size: 24px;">PDV Pro</h1>
+        <h1 style="color: #fff; margin: 0; font-size: 24px;">Kaixa</h1>
         <p style="color: #93c5fd; margin: 8px 0 0;">Pagamento Confirmado</p>
     </div>
 
@@ -942,7 +942,7 @@ function enviarEmailLicenca(PDO $pdo, array $pagamento): void {
         <div style="background: #eff6ff; border-radius: 8px; padding: 16px; margin: 20px 0;">
             <p style="color: #1e40af; font-size: 14px; font-weight: 600; margin: 0 0 8px;">Como ativar:</p>
             <ol style="color: #334155; font-size: 13px; margin: 0; padding-left: 20px;">
-                <li>Abra o PDV Pro no seu computador</li>
+                <li>Abra o Kaixa no seu computador</li>
                 <li>A ativacao sera feita automaticamente</li>
                 <li>Caso nao ative sozinho, va em Licenca &gt; Ativar e cole a chave acima</li>
             </ol>
@@ -955,7 +955,7 @@ function enviarEmailLicenca(PDO $pdo, array $pagamento): void {
     </div>
 
     <div style="background: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0;">
-        <p style="color: #94a3b8; font-size: 12px; margin: 0;">PDV Pro - Sistema de Ponto de Venda</p>
+        <p style="color: #94a3b8; font-size: 12px; margin: 0;">Kaixa - Sistema de Ponto de Venda</p>
     </div>
 </div>
 </body>

@@ -10,7 +10,7 @@ if ($secret !== 'pdvpro2026setup') {
 require_once dirname(__DIR__) . '/app/config.php';
 
 echo "<pre>";
-echo "PDV Pro Admin - Setup Remoto\n";
+echo "Kaixa Admin - Setup Remoto\n";
 echo "============================\n\n";
 
 try {

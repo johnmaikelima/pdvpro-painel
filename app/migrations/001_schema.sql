@@ -1,5 +1,5 @@
 -- ============================================
---   PDV Pro - Painel Admin - Schema MySQL
+--   Kaixa - Painel Admin - Schema MySQL
 -- ============================================
 
 -- Tabela de admins do painel
