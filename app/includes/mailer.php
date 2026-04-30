@@ -8,7 +8,7 @@ function sendMail(PDO $pdo, string $to, string $subject, string $bodyHtml): void
     $port = (int)getConfig($pdo, 'smtp_port', '587');
     $user = getConfig($pdo, 'smtp_user');
     $pass = getConfig($pdo, 'smtp_pass');
-    $fromName = getConfig($pdo, 'smtp_from_name', 'Kaixa');
+    $fromName = getConfig($pdo, 'smtp_from_name', 'Balcão PDV');
     $fromEmail = getConfig($pdo, 'smtp_from_email') ?: $user;
     $encryption = getConfig($pdo, 'smtp_encryption', 'tls');
 
@@ -29,7 +29,7 @@ function sendMail(PDO $pdo, string $to, string $subject, string $bodyHtml): void
     smtpRead($socket);
 
     // EHLO
-    smtpWrite($socket, "EHLO kaixa\r\n");
+    smtpWrite($socket, "EHLO balcao-pdv\r\n");
     smtpRead($socket);
 
     // STARTTLS se for TLS
@@ -42,7 +42,7 @@ function sendMail(PDO $pdo, string $to, string $subject, string $bodyHtml): void
         stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT);
 
         // EHLO novamente apos TLS
-        smtpWrite($socket, "EHLO kaixa\r\n");
+        smtpWrite($socket, "EHLO balcao-pdv\r\n");
         smtpRead($socket);
     }
 

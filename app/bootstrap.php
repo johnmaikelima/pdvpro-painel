@@ -1,6 +1,6 @@
 <?php
 // ============================================
-//   Kaixa - Painel Admin - Bootstrap
+//   Balcão PDV - Painel Admin - Bootstrap
 // ============================================
 
 require_once __DIR__ . '/config.php';

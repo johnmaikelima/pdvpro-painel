@@ -1,6 +1,6 @@
 <?php
 // ============================================
-//   Kaixa - Painel Admin - Migration Runner
+//   Balcão PDV - Painel Admin - Migration Runner
 // ============================================
 
 require_once __DIR__ . '/config.php';

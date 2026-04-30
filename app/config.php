@@ -1,6 +1,6 @@
 <?php
 // ============================================
-//   Kaixa - Painel Admin - Configuracoes
+//   Balcão PDV - Painel Admin - Configuracoes
 // ============================================
 
 // Banco de dados MySQL (usa env do Coolify ou fallback local)
@@ -12,7 +12,7 @@ define('DB_PASS', getenv('DB_PASS') ?: '');
 define('DB_CHARSET', 'utf8mb4');
 
 // App
-define('APP_NAME', 'Kaixa Admin');
+define('APP_NAME', 'Balcão PDV');
 define('APP_VERSION', '1.0.0');
 define('APP_URL', getenv('APP_URL') ?: 'http://localhost:8080');
 

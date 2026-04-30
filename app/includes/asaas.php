@@ -1,6 +1,6 @@
 <?php
 /**
- * Integracao com API Asaas - Kaixa Painel
+ * Integração com API Asaas - Balcão PDV
  * Documentacao: https://docs.asaas.com
  */
 class Asaas
@@ -35,7 +35,7 @@ class Asaas
             CURLOPT_HTTPHEADER => [
                 'Content-Type: application/json',
                 'access_token: ' . $this->apiKey,
-                'User-Agent: Kaixa/1.0',
+                'User-Agent: Balcão PDV/1.0',
             ],
             CURLOPT_SSL_VERIFYPEER => true,
         ]);

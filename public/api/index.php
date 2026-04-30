@@ -1,6 +1,6 @@
 <?php
 // ============================================
-//   Kaixa - API REST de Licenciamento
+//   Balcão PDV - API REST de Licenciamento
 //   Endpoints para o PDV Desktop se comunicar
 // ============================================
 
@@ -146,7 +146,7 @@ function handleRegistrar(PDO $pdo): void {
         if ($email) {
             try {
                 $nomeCliente = e($nomeFantasia ?: $razaoSocial);
-                sendMail($pdo, $email, 'Bem-vindo ao Kaixa!', emailBoasVindasDesktop($nomeCliente, $chave));
+                sendMail($pdo, $email, 'Bem-vindo ao Balcão PDV!', emailBoasVindasDesktop($nomeCliente, $chave));
                 logApi($pdo, null, $clienteId, 'email_boas_vindas', ['email' => $email]);
             } catch (\Throwable $e) {
                 logApi($pdo, null, $clienteId, 'email_boas_vindas_erro', ['erro' => $e->getMessage()]);
@@ -978,7 +978,7 @@ function enviarEmailLicenca(PDO $pdo, array $pagamento): void {
     </div>
 
     <div style="background: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0;">
-        <p style="color: #94a3b8; font-size: 12px; margin: 0;">Kaixa - Sistema de Ponto de Venda</p>
+        <p style="color: #94a3b8; font-size: 12px; margin: 0;">Balcão PDV - Sistema de Ponto de Venda</p>
     </div>
 </div>
 </body>
@@ -1122,7 +1122,7 @@ function handleRegistrarSaas(PDO $pdo): void {
                 $planoNome = $plano ? e($plano['nome']) : 'Teste';
                 $login = e($loginSaas ?: '');
                 $saasUrl = SAAS_URL ? rtrim(SAAS_URL, '/') : '';
-                sendMail($pdo, $email, 'Bem-vindo ao Kaixa!', emailBoasVindasSaas($nomeCliente, $planoNome, $trialDias, $login, $saasUrl));
+                sendMail($pdo, $email, 'Bem-vindo ao Balcão PDV!', emailBoasVindasSaas($nomeCliente, $planoNome, $trialDias, $login, $saasUrl));
                 logApi($pdo, $licencaId, $clienteId, 'email_boas_vindas_saas', ['email' => $email]);
             } catch (\Throwable $e) {
                 logApi($pdo, $licencaId, $clienteId, 'email_boas_vindas_saas_erro', ['erro' => $e->getMessage()]);
@@ -1271,7 +1271,7 @@ function emailBoasVindasDesktop(string $nome, string $chave): string {
     </div>
 
     <div style="background: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0;">
-        <p style="color: #94a3b8; font-size: 12px; margin: 0;">Kaixa - Sistema de Ponto de Venda</p>
+        <p style="color: #94a3b8; font-size: 12px; margin: 0;">Balcão PDV - Sistema de Ponto de Venda</p>
     </div>
 </div>
 </body>
@@ -1291,7 +1291,7 @@ function emailBoasVindasSaas(string $nome, string $plano, int $trialDias, string
 
     <div style="background: linear-gradient(135deg, #0f172a, #1e40af); padding: 30px; text-align: center;">
         <h1 style="color: #fff; margin: 0; font-size: 24px;">Kaixa</h1>
-        <p style="color: #93c5fd; margin: 8px 0 0;">Bem-vindo ao Kaixa!</p>
+        <p style="color: #93c5fd; margin: 8px 0 0;">Bem-vindo ao Balcão PDV!</p>
     </div>
 
     <div style="padding: 30px;">
@@ -1338,7 +1338,7 @@ function emailBoasVindasSaas(string $nome, string $plano, int $trialDias, string
     </div>
 
     <div style="background: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0;">
-        <p style="color: #94a3b8; font-size: 12px; margin: 0;">Kaixa - Sistema de Ponto de Venda</p>
+        <p style="color: #94a3b8; font-size: 12px; margin: 0;">Balcão PDV - Sistema de Ponto de Venda</p>
     </div>
 </div>
 </body>
@@ -1366,7 +1366,7 @@ function handleReenviarBoasVindas(PDO $pdo): void {
     $saasUrl = SAAS_URL ? rtrim(SAAS_URL, '/') : '';
 
     try {
-        sendMail($pdo, $email, 'Bem-vindo ao Kaixa!', emailBoasVindasSaas($nome, $plano, $trialDias, $login, $saasUrl));
+        sendMail($pdo, $email, 'Bem-vindo ao Balcão PDV!', emailBoasVindasSaas($nome, $plano, $trialDias, $login, $saasUrl));
         jsonResponse(200, ['ok' => true, 'mensagem' => 'Email reenviado com sucesso.']);
     } catch (\Throwable $e) {
         jsonResponse(500, ['ok' => false, 'mensagem' => 'Erro ao enviar email: ' . $e->getMessage()]);
