@@ -1,5 +1,5 @@
 -- ============================================
---   Kaixa - Painel Admin - Schema MySQL
+--   Balcão PDV - Painel Admin - Schema MySQL
 -- ============================================
 
 -- Tabela de admins do painel

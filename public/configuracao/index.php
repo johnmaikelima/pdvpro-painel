@@ -94,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $port = (int)getConfig($pdo, 'smtp_port', '587');
             $user = getConfig($pdo, 'smtp_user');
             $pass = getConfig($pdo, 'smtp_pass');
-            $fromName = getConfig($pdo, 'smtp_from_name', 'Kaixa');
+            $fromName = getConfig($pdo, 'smtp_from_name', 'Balcão PDV');
             $fromEmail = getConfig($pdo, 'smtp_from_email');
             $encryption = getConfig($pdo, 'smtp_encryption', 'tls');
 
@@ -102,8 +102,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception('Configure host, usuario e senha SMTP primeiro.');
             }
 
-            $subject = 'Teste Kaixa - Email Configurado';
-            $body = '<h2>Kaixa</h2><p>Se voce recebeu este email, a configuracao SMTP esta funcionando corretamente!</p><p><small>Enviado em ' . date('d/m/Y H:i:s') . '</small></p>';
+            $subject = 'Teste Balcão PDV - Email Configurado';
+            $body = '<h2>Balcão PDV</h2><p>Se voce recebeu este email, a configuracao SMTP esta funcionando corretamente!</p><p><small>Enviado em ' . date('d/m/Y H:i:s') . '</small></p>';
 
             sendMail($pdo, $emailTeste, $subject, $body);
             flash('success', "Email de teste enviado para {$emailTeste}!");
@@ -274,7 +274,7 @@ include APP_PATH . '/includes/header.php';
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label">Nome do Remetente</label>
-                                    <input type="text" name="smtp_from_name" class="form-control" value="<?= e($smtp['smtp_from_name'] ?? 'Kaixa') ?>">
+                                    <input type="text" name="smtp_from_name" class="form-control" value="<?= e($smtp['smtp_from_name'] ?? 'Balcão PDV') ?>">
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label">Email do Remetente</label>
@@ -425,7 +425,7 @@ include APP_PATH . '/includes/header.php';
                             <div class="alert alert-warning mt-3 mb-0 small">
                                 <i class="fas fa-exclamation-triangle me-1"></i>
                                 Configure a variavel <code>SAAS_URL</code> no Coolify para habilitar esta funcao.
-                                <br>Exemplo: <code>https://app.kaixa.com.br</code>
+                                <br>Exemplo: <code>https://app.balcaopdv.com.br</code>
                             </div>
                         <?php endif; ?>
                     </div>

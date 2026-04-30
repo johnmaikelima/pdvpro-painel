@@ -1,5 +1,5 @@
 -- ============================================
---   Kaixa - Painel Admin - Dados Iniciais
+--   Balcão PDV - Painel Admin - Dados Iniciais
 -- ============================================
 
 -- Admin padrao (senha: admin123)

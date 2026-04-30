@@ -69,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // Nome seguro: pdvpro-desktop-1.2.0.exe
-            $arquivoNome = "kaixa-{$tipoProduto}-{$versao}.{$ext}";
+            $arquivoNome = "balcaopdv-{$tipoProduto}-{$versao}.{$ext}";
             $destino = $uploadDir . $arquivoNome;
 
             if (!is_dir($uploadDir)) {

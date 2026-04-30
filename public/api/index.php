@@ -550,7 +550,7 @@ function handleUpgrade(PDO $pdo): void {
         $novaLicId = (int)$pdo->lastInsertId();
 
         // Criar assinatura recorrente no Asaas
-        $descricao = "Kaixa - {$plano['nome']}";
+        $descricao = "Balcão PDV - {$plano['nome']}";
         $vencimento = date('Y-m-d', strtotime('+3 days'));
 
         $subscription = $asaas->createSubscription([
@@ -924,7 +924,7 @@ function enviarEmailLicenca(PDO $pdo, array $pagamento): void {
 
         $valor = number_format((float)($pagamento['valor'] ?? 0), 2, ',', '.');
 
-        $subject = 'Kaixa - Licenca Ativada com Sucesso!';
+        $subject = 'Balcão PDV - Licenca Ativada com Sucesso!';
         $body = <<<HTML
 <!DOCTYPE html>
 <html>
@@ -933,7 +933,7 @@ function enviarEmailLicenca(PDO $pdo, array $pagamento): void {
 <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
 
     <div style="background: linear-gradient(135deg, #0f172a, #1e40af); padding: 30px; text-align: center;">
-        <h1 style="color: #fff; margin: 0; font-size: 24px;">Kaixa</h1>
+        <h1 style="color: #fff; margin: 0; font-size: 24px;">Balcão PDV</h1>
         <p style="color: #93c5fd; margin: 8px 0 0;">Pagamento Confirmado</p>
     </div>
 
@@ -965,7 +965,7 @@ function enviarEmailLicenca(PDO $pdo, array $pagamento): void {
         <div style="background: #eff6ff; border-radius: 8px; padding: 16px; margin: 20px 0;">
             <p style="color: #1e40af; font-size: 14px; font-weight: 600; margin: 0 0 8px;">Como ativar:</p>
             <ol style="color: #334155; font-size: 13px; margin: 0; padding-left: 20px;">
-                <li>Abra o Kaixa no seu computador</li>
+                <li>Abra o Balcão PDV no seu computador</li>
                 <li>A ativacao sera feita automaticamente</li>
                 <li>Caso nao ative sozinho, va em Licenca &gt; Ativar e cole a chave acima</li>
             </ol>
@@ -1241,7 +1241,7 @@ function emailBoasVindasDesktop(string $nome, string $chave): string {
 <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
 
     <div style="background: linear-gradient(135deg, #0f172a, #1e40af); padding: 30px; text-align: center;">
-        <h1 style="color: #fff; margin: 0; font-size: 24px;">Kaixa</h1>
+        <h1 style="color: #fff; margin: 0; font-size: 24px;">Balcão PDV</h1>
         <p style="color: #93c5fd; margin: 8px 0 0;">Bem-vindo!</p>
     </div>
 
@@ -1258,7 +1258,7 @@ function emailBoasVindasDesktop(string $nome, string $chave): string {
         <div style="background: #eff6ff; border-radius: 8px; padding: 16px; margin: 20px 0;">
             <p style="color: #1e40af; font-size: 14px; font-weight: 600; margin: 0 0 8px;">Proximos passos:</p>
             <ol style="color: #334155; font-size: 13px; margin: 0; padding-left: 20px;">
-                <li>Abra o Kaixa no seu computador</li>
+                <li>Abra o Balcão PDV no seu computador</li>
                 <li>A ativacao sera feita automaticamente</li>
                 <li>Cadastre seus produtos e comece a vender!</li>
             </ol>
@@ -1290,8 +1290,8 @@ function emailBoasVindasSaas(string $nome, string $plano, int $trialDias, string
 <div style="max-width: 560px; margin: 0 auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
 
     <div style="background: linear-gradient(135deg, #0f172a, #1e40af); padding: 30px; text-align: center;">
-        <h1 style="color: #fff; margin: 0; font-size: 24px;">Kaixa</h1>
-        <p style="color: #93c5fd; margin: 8px 0 0;">Bem-vindo ao Balcão PDV!</p>
+        <h1 style="color: #fff; margin: 0; font-size: 24px;">Balcão PDV</h1>
+        <p style="color: #93c5fd; margin: 8px 0 0;">Bem-vindo!</p>
     </div>
 
     <div style="padding: 30px;">
@@ -1332,7 +1332,7 @@ function emailBoasVindasSaas(string $nome, string $plano, int $trialDias, string
         </div>
 
         <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">
-            Este email foi enviado porque voce se cadastrou no Kaixa.<br>
+            Este email foi enviado porque voce se cadastrou no Balcão PDV.<br>
             Em caso de duvidas, entre em contato com o suporte.
         </p>
     </div>

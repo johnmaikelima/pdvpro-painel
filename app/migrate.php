@@ -5,7 +5,7 @@
 
 require_once __DIR__ . '/config.php';
 
-echo "Kaixa Admin - Migration Runner\n";
+echo "Balcão PDV Admin - Migration Runner\n";
 echo "================================\n\n";
 
 // Conectar sem selecionar banco (para criar se necessario)

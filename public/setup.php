@@ -18,7 +18,7 @@ if (empty($setupKey) || empty($secret) || !hash_equals($setupKey, $secret)) {
 }
 
 echo "<pre>";
-echo "Kaixa Admin - Setup Remoto\n";
+echo "Balcão PDV Admin - Setup Remoto\n";
 echo "============================\n\n";
 
 try {

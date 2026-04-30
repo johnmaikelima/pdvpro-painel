@@ -79,7 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="login-card">
         <div class="text-center mb-4">
             <i class="fas fa-cash-register fa-3x text-primary mb-3"></i>
-            <h3>Kaixa</h3>
+            <h3>Balcão PDV</h3>
             <p class="subtitle">Painel Administrativo</p>
         </div>
 
