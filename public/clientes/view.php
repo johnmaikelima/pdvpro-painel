@@ -108,6 +108,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'acessar
     }
 }
 
+// Renovar/Reativar licenca SaaS
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'renovar_licenca_saas') {
+    if (!verifyCsrf()) {
+        flash('danger', 'Token CSRF inválido.');
+        redirect("view.php?id={$id}");
+    }
+
+    $licencaId = (int)($_POST['licenca_id'] ?? 0);
+    $periodo = $_POST['periodo'] ?? 'mensal';
+    if (!in_array($periodo, ['mensal', 'trimestral', 'anual'], true)) {
+        $periodo = 'mensal';
+    }
+
+    // Buscar licenca e validar que pertence ao cliente e e SaaS
+    $stmtLic = $pdo->prepare("SELECT * FROM licencas WHERE id = ? AND cliente_id = ? AND chave LIKE 'S%' LIMIT 1");
+    $stmtLic->execute([$licencaId, $id]);
+    $licencaAtual = $stmtLic->fetch();
+
+    if (!$licencaAtual) {
+        flash('danger', 'Licença SaaS não encontrada para este cliente.');
+        redirect("view.php?id={$id}");
+    }
+
+    $dias = diasPlano($periodo);
+    // Se ja venceu, contar a partir de agora; se ainda esta valida, somar ao vencimento atual
+    $baseTime = (!empty($licencaAtual['data_vencimento']) && strtotime($licencaAtual['data_vencimento']) > time())
+        ? strtotime($licencaAtual['data_vencimento'])
+        : time();
+    $novoVencimento = date('Y-m-d H:i:s', strtotime("+{$dias} days", $baseTime));
+
+    $upd = $pdo->prepare("UPDATE licencas SET status='ativa', tipo=?, data_ativacao=COALESCE(data_ativacao, NOW()), data_vencimento=?, observacoes=CONCAT(COALESCE(observacoes, ''), ?) WHERE id=?");
+    $adminNome = $_SESSION['admin_user']['nome'] ?? 'admin';
+    $obsRenov = "\n[" . date('d/m/Y H:i') . "] Renovada por " . $adminNome . " ({$periodo}) ate " . date('d/m/Y', strtotime($novoVencimento));
+    $upd->execute([$periodo, $novoVencimento, $obsRenov, $licencaId]);
+
+    // Atualizar status do cliente para 'ativo'
+    $pdo->prepare("UPDATE clientes SET status='ativo' WHERE id=?")->execute([$id]);
+
+    $logStmt = $pdo->prepare("INSERT INTO api_logs (licenca_id, cliente_id, acao, ip, request_data) VALUES (?,?,?,?,?)");
+    $logStmt->execute([$licencaId, $id, 'renovar_saas_manual', $_SERVER['REMOTE_ADDR'] ?? '', json_encode([
+        'periodo' => $periodo,
+        'novo_vencimento' => $novoVencimento,
+        'admin' => $adminNome,
+    ])]);
+
+    flash('success', "Licença SaaS reativada! Vence em " . date('d/m/Y', strtotime($novoVencimento)) . ".");
+    redirect("view.php?id={$id}");
+}
+
 // Excluir cliente
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'excluir') {
     if (!verifyCsrf()) {
@@ -298,9 +347,16 @@ include APP_PATH . '/includes/header.php';
             <?php if (empty($licencas)): ?>
                 <tr><td colspan="7" class="text-center text-muted py-3">Nenhuma licenca</td></tr>
             <?php else: ?>
-                <?php foreach ($licencas as $l): ?>
+                <?php foreach ($licencas as $l):
+                    $isSaas = !empty($l['chave']) && $l['chave'][0] === 'S';
+                ?>
                 <tr>
                     <td>
+                        <?php if ($isSaas): ?>
+                            <span class="badge bg-info me-1" title="Licenca SaaS (Online)"><i class="fas fa-cloud"></i></span>
+                        <?php else: ?>
+                            <span class="badge bg-primary me-1" title="Licenca Desktop"><i class="fas fa-desktop"></i></span>
+                        <?php endif; ?>
                         <span class="license-key"><?= e($l['chave']) ?></span>
                         <button class="btn btn-sm btn-outline-secondary ms-1" onclick="copyToClipboard('<?= e($l['chave']) ?>', this)">
                             <i class="fas fa-copy"></i>
@@ -312,6 +368,18 @@ include APP_PATH . '/includes/header.php';
                     <td><?= formatDate($l['data_vencimento']) ?></td>
                     <td><?= $l['nfce_emitidas_mes'] ?></td>
                     <td>
+                        <?php if ($isSaas): ?>
+                            <button class="btn btn-sm btn-outline-success"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#modalRenovar"
+                                    data-licenca-id="<?= $l['id'] ?>"
+                                    data-licenca-chave="<?= e($l['chave']) ?>"
+                                    data-licenca-status="<?= e($l['status']) ?>"
+                                    data-licenca-vencimento="<?= e($l['data_vencimento'] ?? '') ?>"
+                                    title="Renovar / Reativar licenca SaaS">
+                                <i class="fas fa-rotate"></i>
+                            </button>
+                        <?php endif; ?>
                         <?php if ($l['status'] === 'ativa'): ?>
                             <a href="<?= APP_URL ?>/licencas/revogar.php?id=<?= $l['id'] ?>" class="btn btn-sm btn-outline-danger"
                                onclick="return confirmAction('Revogar esta licenca?')">
@@ -360,5 +428,91 @@ include APP_PATH . '/includes/header.php';
         </tbody>
     </table>
 </div>
+
+<!-- Modal Renovar Licenca SaaS -->
+<div class="modal fade" id="modalRenovar" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="POST">
+                <?= csrfField() ?>
+                <input type="hidden" name="acao" value="renovar_licenca_saas">
+                <input type="hidden" name="licenca_id" id="renovarLicencaId">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-rotate me-2 text-success"></i>Renovar Licença SaaS</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info small mb-3">
+                        <i class="fas fa-info-circle me-1"></i>
+                        A mesma chave de licença é mantida — o cliente continua acessando o SaaS sem precisar trocar nada na conta dele.
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">Chave</label>
+                        <div class="license-key fs-5" id="renovarChave">—</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">Status atual</label>
+                        <div id="renovarStatus">—</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">Vencimento atual</label>
+                        <div id="renovarVencimento">—</div>
+                    </div>
+
+                    <hr>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Período da renovação *</label>
+                        <select name="periodo" class="form-select form-select-lg" required>
+                            <option value="mensal">Mensal (+30 dias)</option>
+                            <option value="trimestral">Trimestral (+90 dias)</option>
+                            <option value="anual">Anual (+365 dias)</option>
+                        </select>
+                        <small class="text-muted">
+                            Se a licença já está vencida, conta a partir de hoje. Se ainda está válida, soma ao vencimento atual.
+                        </small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-check me-1"></i>Reativar / Renovar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('modalRenovar').addEventListener('show.bs.modal', function(ev) {
+    const btn = ev.relatedTarget;
+    if (!btn) return;
+
+    document.getElementById('renovarLicencaId').value = btn.dataset.licencaId || '';
+    document.getElementById('renovarChave').textContent = btn.dataset.licencaChave || '—';
+
+    const status = btn.dataset.licencaStatus || '';
+    const statusBadges = {
+        'ativa': '<span class="badge bg-success">Ativa</span>',
+        'expirada': '<span class="badge bg-warning">Expirada</span>',
+        'revogada': '<span class="badge bg-danger">Revogada</span>',
+        'bloqueada': '<span class="badge bg-dark">Bloqueada</span>',
+        'disponivel': '<span class="badge bg-secondary">Disponível</span>',
+    };
+    document.getElementById('renovarStatus').innerHTML = statusBadges[status] || status;
+
+    const venc = btn.dataset.licencaVencimento;
+    if (venc) {
+        const d = new Date(venc.replace(' ', 'T'));
+        document.getElementById('renovarVencimento').textContent = d.toLocaleDateString('pt-BR');
+    } else {
+        document.getElementById('renovarVencimento').textContent = '—';
+    }
+});
+</script>
 
 <?php include APP_PATH . '/includes/footer.php'; ?>

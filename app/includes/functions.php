@@ -66,12 +66,16 @@ function formatMoney(float $value): string {
     return 'R$ ' . number_format($value, 2, ',', '.');
 }
 
-function generateLicenseKey(string $tipo = 'mensal'): string {
-    $prefix = match($tipo) {
-        'anual' => 'A',
-        'trimestral' => 'T',
-        default => 'M',
-    };
+function generateLicenseKey(string $tipo = 'mensal', string $tipoProduto = 'desktop'): string {
+    if ($tipoProduto === 'saas') {
+        $prefix = 'S';
+    } else {
+        $prefix = match($tipo) {
+            'anual' => 'A',
+            'trimestral' => 'T',
+            default => 'M',
+        };
+    }
     $chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     $key = $prefix;
     for ($i = 1; $i < 16; $i++) {
