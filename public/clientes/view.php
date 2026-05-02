@@ -146,6 +146,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'renovar
     // Atualizar status do cliente para 'ativo'
     $pdo->prepare("UPDATE clientes SET status='ativo' WHERE id=?")->execute([$id]);
 
+    // Sincronizar com SaaS (atualizar tenant no banco pdvpro_saas)
+    try {
+        $saasDbHost = $_ENV['SAAS_DB_HOST'] ?? DB_HOST;
+        $saasDbPort = $_ENV['SAAS_DB_PORT'] ?? DB_PORT;
+        $saasDbName = $_ENV['SAAS_DB_NAME'] ?? 'pdvpro_saas';
+        $saasDbUser = $_ENV['SAAS_DB_USER'] ?? DB_USER;
+        $saasDbPass = $_ENV['SAAS_DB_PASS'] ?? DB_PASS;
+
+        $pdoSaas = new PDO(
+            "mysql:host={$saasDbHost};port={$saasDbPort};dbname={$saasDbName};charset=utf8mb4",
+            $saasDbUser,
+            $saasDbPass,
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+        );
+
+        // Atualizar status e vencimento do tenant que usa esta chave
+        $syncStmt = $pdoSaas->prepare("UPDATE tenants SET status='ativo', data_vencimento=? WHERE licenca_chave=?");
+        $syncStmt->execute([$novoVencimento, $licencaAtual['chave']]);
+    } catch (\Throwable $e) {
+        // Log do erro mas não bloqueia o fluxo
+        $logStmt = $pdo->prepare("INSERT INTO api_logs (licenca_id, cliente_id, acao, ip, request_data) VALUES (?,?,?,?,?)");
+        $logStmt->execute([$licencaId, $id, 'sincronizacao_saas_erro', $_SERVER['REMOTE_ADDR'] ?? '', json_encode([
+            'erro' => $e->getMessage(),
+        ])]);
+    }
+
     $logStmt = $pdo->prepare("INSERT INTO api_logs (licenca_id, cliente_id, acao, ip, request_data) VALUES (?,?,?,?,?)");
     $logStmt->execute([$licencaId, $id, 'renovar_saas_manual', $_SERVER['REMOTE_ADDR'] ?? '', json_encode([
         'periodo' => $periodo,
