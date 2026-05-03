@@ -93,17 +93,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'acessar
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT => 10,
         CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+        CURLOPT_SSL_VERIFYPEER => false, // Para desenvolvimento/testes
+        CURLOPT_SSL_VERIFYHOST => false,
     ]);
     $resp = curl_exec($ch);
+    $curlError = curl_error($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
     $data = json_decode($resp, true);
+    if ($curlError) {
+        error_log("IMPERSONATE CURL ERROR: " . $curlError . " | URL: " . $url);
+    }
+
     if ($httpCode === 200 && !empty($data['ok']) && !empty($data['url'])) {
         header('Location: ' . $data['url']);
         exit;
     } else {
-        flash('danger', 'Erro ao acessar SaaS: ' . ($data['mensagem'] ?? 'HTTP ' . $httpCode));
+        $mensagem = $data['mensagem'] ?? ($curlError ?: 'HTTP ' . $httpCode);
+        error_log("IMPERSONATE ERROR: " . $mensagem . " | Response: " . substr($resp, 0, 500));
+        flash('danger', 'Erro ao acessar SaaS: ' . $mensagem);
         redirect("view.php?id={$id}");
     }
 }
